@@ -1,0 +1,18 @@
+---
+description: Frontend development rules
+globs:
+  - "apps/web/src/**/*"
+alwaysApply: false
+---
+
+# Frontend Rules
+
+- Reuse existing components before creating new ones.
+- Keep components focused.
+- Avoid duplicated UI logic.
+- Follow the existing styling and design system.
+- Avoid unnecessary state.
+- Handle loading, empty, error, and success states.
+- Keep accessibility in mind.
+- Avoid unnecessary client-side rendering.
+- Do not introduce a new UI library when an existing solution is sufficient.

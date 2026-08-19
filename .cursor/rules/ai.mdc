@@ -1,0 +1,25 @@
+---
+description: AI and LLM engineering rules
+globs:
+  - "apps/api/src/modules/ai/**/*"
+  - "apps/api/src/**/*ai*"
+  - "apps/api/src/**/*llm*"
+  - "apps/api/src/**/*rag*"
+  - "apps/api/src/**/*embedding*"
+  - "apps/api/src/**/*prompt*"
+alwaysApply: false
+---
+
+# AI Engineering Rules
+
+- Treat LLM output as untrusted input.
+- Validate model output before using it in business logic.
+- Prefer structured outputs for machine-consumed responses.
+- Never hardcode model API keys.
+- Keep provider credentials in environment variables.
+- Handle model errors, rate limits, and timeouts.
+- Keep retrieval, business logic, and generation responsibilities separate.
+- Preserve source metadata in RAG systems.
+- Do not assume model output is factually correct.
+- Avoid sending sensitive data to external models unnecessarily.
+- Keep prompts clear, versioned, and maintainable.

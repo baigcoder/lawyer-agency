@@ -1,0 +1,1329 @@
+// AI WhatsApp Legal Assistant — database schema (Phase 3)
+//
+// Two schemas (D-001):
+//   platform — cross-tenant infrastructure: tenant registry, webhook inbox,
+//              outbox, permission catalog, prompt registry. NO RLS here;
+//              access is restricted to privileged roles and infrastructure
+//              code paths only (never request-scoped tenant queries).
+//   app      — every tenant-owned table. Each carries tenantId; RLS with
+//              FORCE is applied in migration 0002 (Prisma can't express it).
+//
+// Prisma can't express: RLS policies, table partitioning, exclusion
+// constraints, vector indexes, partial unique indexes. Those live in
+// hand-written migrations 0002/0003 — see docs/phases/phase-03-database-design.md.
+
+// Prisma 7: Rust-free client via query compiler + driver adapter
+// (@prisma/adapter-pg). `prisma-client-js` is superseded — do not revert.
+generator client {
+  provider     = "prisma-client"
+  // Inside src/ so tsc's rootDir stays src/ and dist mirrors it 1:1.
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+// Prisma 7: connection URLs live in prisma.config.ts, not the schema file.
+// Migrations use MIGRATION_DATABASE_URL (owner role); the app uses
+// DATABASE_URL (non-owner app_user, RLS-bound) via @prisma/adapter-pg.
+datasource db {
+  provider = "postgresql"
+  schemas  = ["app", "platform"]
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum TenantStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
+  OFFBOARDED
+
+  @@schema("platform")
+}
+
+enum TenantFeatureStatus {
+  ACTIVE
+  INACTIVE
+  EXPIRED
+
+  @@schema("platform")
+}
+
+enum TenantFeatureCode {
+  OFFICIAL_WHATSAPP
+
+  @@schema("platform")
+}
+
+enum Language {
+  EN
+  UR
+  ROMAN_UR
+  MIXED
+  UNKNOWN
+
+  @@schema("app")
+}
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+
+  @@schema("app")
+}
+
+enum CaseStatus {
+  LEAD
+  CONSULTATION
+  ENGAGED
+  IN_COURT
+  CLOSED
+  ARCHIVED
+
+  @@schema("app")
+}
+
+enum Urgency {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+
+  @@schema("app")
+}
+
+enum ConversationState {
+  AI_ACTIVE
+  HUMAN_REQUIRED
+  HUMAN_ACTIVE
+  CLOSED
+
+  @@schema("app")
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+
+  @@schema("app")
+}
+
+enum SenderType {
+  CLIENT
+  AI
+  LAWYER
+  STAFF
+  SYSTEM
+
+  @@schema("app")
+}
+
+enum ContentType {
+  TEXT
+  IMAGE
+  AUDIO
+  VIDEO
+  DOCUMENT
+  LOCATION
+  INTERACTIVE
+  TEMPLATE
+  STICKER
+  OTHER
+
+  @@schema("app")
+}
+
+enum DeliveryStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+
+  @@schema("app")
+}
+
+enum IntakeStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+
+  @@schema("app")
+}
+
+enum EscalationTrigger {
+  SELF_HARM
+  DOMESTIC_VIOLENCE
+  ACTIVE_ARREST
+  IMMINENT_DEADLINE
+  MANUAL
+
+  @@schema("app")
+}
+
+enum EscalationStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+
+  @@schema("app")
+}
+
+enum DocType {
+  CNIC
+  FIR
+  COURT_NOTICE
+  AFFIDAVIT
+  CONTRACT
+  EVIDENCE_PHOTO
+  PAYMENT_PROOF
+  RECEIPT
+  OTHER
+
+  @@schema("app")
+}
+
+enum OcrStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  SKIPPED
+
+  @@schema("app")
+}
+
+enum ScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+  FAILED
+
+  @@schema("app")
+}
+
+enum DocumentRequestStatus {
+  PENDING
+  FULFILLED
+  CANCELLED
+
+  @@schema("app")
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+
+  @@schema("app")
+}
+
+enum PaymentMethod {
+  JAZZCASH
+  EASYPAISA
+  CARD_LOCAL
+  CARD_INTL
+  BANK_TRANSFER
+  CASH
+  OTHER_MANUAL
+
+  @@schema("app")
+}
+
+enum PaymentStatus {
+  REQUESTED
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  RECORDED_MANUAL
+  CANCELLED
+
+  @@schema("app")
+}
+
+enum NotificationChannel {
+  DASHBOARD
+  WEB_PUSH
+  WHATSAPP_TEMPLATE
+  EMAIL_DIGEST
+
+  @@schema("app")
+}
+
+enum KbStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+
+  @@schema("app")
+}
+
+enum DataTier {
+  T1
+  T2
+  T3
+
+  @@schema("app")
+}
+
+enum AiCallStatus {
+  SUCCESS
+  ERROR
+  FALLBACK_SUCCESS
+  CIRCUIT_OPEN
+
+  @@schema("app")
+}
+
+enum WaVerificationStatus {
+  NOT_STARTED
+  PENDING
+  VERIFIED
+  REJECTED
+
+  @@schema("app")
+}
+
+/**
+ * Phase 3 connection state machine (D-092). Drives the dashboard go-live
+ * checklist and the /v1/whatsapp/health surface. Transitions are mediated
+ * by OnboardingService; LIVE is only reachable via an explicit admin go-live
+ * gate once READY_TO_GO_LIVE + approved templates are confirmed.
+ */
+enum ConnectionStage {
+  OFFICIAL_CONNECT_STARTED
+  META_PENDING_VERIFICATION
+  NUMBER_VERIFIED
+  TEMPLATES_PENDING
+  READY_TO_GO_LIVE
+  LIVE
+  PAUSED
+  REJECTED
+  DISCONNECTED
+
+  @@schema("app")
+}
+
+enum PilotSessionStatus {
+  PAIRING
+  PAIRED
+  EXPIRED
+  DISCONNECTED
+
+  @@schema("app")
+}
+
+enum TemplateStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  PAUSED
+
+  @@schema("app")
+}
+
+enum TemplateCategory {
+  UTILITY
+  AUTHENTICATION
+  SERVICE
+  // MARKETING intentionally absent — PBC solicitation risk (D-005)
+
+  @@schema("app")
+}
+
+enum ActorType {
+  USER
+  SYSTEM
+  PLATFORM_ADMIN
+  AI
+
+  @@schema("app")
+}
+
+enum WebhookEventStatus {
+  RECEIVED
+  PROCESSED
+  FAILED
+  DUPLICATE
+  IGNORED
+
+  @@schema("platform")
+}
+
+// ---------------------------------------------------------------------------
+// platform schema — cross-tenant infrastructure
+// ---------------------------------------------------------------------------
+
+model Tenant {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  slug      String   @unique
+  // Clerk organization id that maps to this tenant (D-017)
+  clerkOrgId String? @unique
+  status    TenantStatus @default(TRIAL)
+  // practice areas, working hours, consult fee, escalation chain, locale prefs
+  settings  Json     @default("{}")
+  // D-005: tighten-only provider allow-list; empty = platform default set
+  aiProviderAllowlist String[] @default([])
+  // FR-AI-11: monthly AI budget cap in USD micros (null = platform default)
+  aiMonthlyBudgetMicros Int?
+  // NFR-RET-01: per-tenant stricter retention override (days; null = default)
+  retentionDaysOverride Int?
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  roles              Role[]
+  users              User[]
+  lawyers            Lawyer[]
+  lawyerCalendars    LawyerCalendar[]
+  lawyerAvailability LawyerAvailability[]
+  lawyerCaseHighlights LawyerCaseHighlight[]
+  clients            Client[]
+  cases              Case[]
+  caseLawyers        CaseLawyer[]
+  conversations      Conversation[]
+  messages           Message[]
+  intakeSessions     IntakeSession[]
+  escalations        Escalation[]
+  documents          Document[]
+  documentChunks     DocumentChunk[]
+  documentRequests   DocumentRequest[]
+  appointments       Appointment[]
+  payments           Payment[]
+  notifications      Notification[]
+  auditLogs          AuditLog[]
+  aiLogs             AiLog[]
+  promptLogs         PromptLog[]
+  knowledgeBase      KnowledgeBase[]
+  kbChunks           KbChunk[]
+  whatsappAccounts   WhatsappAccount[]
+  whatsappConnections WhatsappConnection[]
+  whatsappTemplates  WhatsappTemplate[]
+  pilotSessions      PilotSession[]
+  outboxEvents       OutboxEvent[]
+  webhookEvents      WebhookEvent[]
+  waRoutes           WaRoute[]
+  pushSubscriptions  PushSubscription[]
+  analyticsDaily     AnalyticsDaily[]
+  features           TenantFeature[]
+  firmPaymentDetails FirmPaymentDetails?
+  courtHearings      CourtHearing[]
+  conversationNotes  ConversationNote[]
+
+  @@map("tenants")
+  @@schema("platform")
+}
+
+model PlatformUser {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clerkUserId String   @unique
+  email       String
+  name        String
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+
+  @@map("platform_users")
+  @@schema("platform")
+}
+
+// Platform-owned permission catalog; tenants bind permissions to their roles.
+model Permission {
+  id          String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        String @unique // e.g. "case:read", "payment:refund"
+  description String
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+  @@schema("platform")
+}
+
+// Platform-owned prompt registry. Versioned so every ai_log/prompt_log pins
+// the exact prompt that produced it (FR-AI-10).
+model PromptVersion {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agent        String // e.g. "intake", "classification", "faq"
+  version      Int
+  template     String
+  // sha256 of template — cheap integrity check in logs without storing T2 I/O
+  templateHash String
+  isActive     Boolean  @default(false)
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+
+  aiLogs     AiLog[]
+  promptLogs PromptLog[]
+
+  @@unique([agent, version])
+  @@map("prompt_versions")
+  @@schema("platform")
+}
+
+// Inbound webhook inbox — the idempotency anchor for the whole platform
+// (ADR-004). Unique externalEventId makes Meta retries safe. Raw payloads may
+// contain T2/T3 data: access restricted to the WhatsApp module; payload is
+// nulled after successful processing (retention trim, Phase 6).
+model WebhookEvent {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String?  @db.Uuid // resolved via phone_number_id; null pre-resolution
+  provider        String   @default("meta")
+  externalEventId String   @unique
+  phoneNumberId   String?
+  payload         Json?
+  status          WebhookEventStatus @default(RECEIVED)
+  error           String?
+  receivedAt      DateTime @default(now()) @db.Timestamptz(6)
+  processedAt     DateTime? @db.Timestamptz(6)
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+
+  @@index([status, receivedAt])
+  @@map("webhook_events")
+  @@schema("platform")
+}
+
+// Transactional outbox (ADR-003): written in the same transaction as the
+// state change; dispatcher publishes to BullMQ; consumers dedupe on event id.
+model OutboxEvent {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String    @db.Uuid
+  type        String // e.g. "case.created", "payment.succeeded"
+  payload     Json // classified T1/T2 only — n8n never receives T3 (D-005)
+  occurredAt  DateTime  @default(now()) @db.Timestamptz(6)
+  publishedAt DateTime? @db.Timestamptz(6)
+  attempts    Int       @default(0)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([publishedAt, occurredAt])
+  @@map("outbox_events")
+  @@schema("platform")
+}
+
+// Pre-tenant routing (D-040): inbound webhooks carry only Meta's
+// phone_number_id; this maps it to a tenant before any RLS-scoped work.
+// Written at WABA onboarding (6b); read on every webhook.
+model WaRoute {
+  phoneNumberId String   @id
+  tenantId      String   @db.Uuid
+  wabaId        String
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("wa_routes")
+  @@schema("platform")
+}
+
+// Platform-level feature entitlements. Gates paid capabilities like the
+// official WhatsApp Business API connection; kept in platform schema because
+// it represents a cross-tenant billing decision, not tenant-owned data.
+model TenantFeature {
+  id        String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String             @db.Uuid
+  code      TenantFeatureCode
+  status    TenantFeatureStatus @default(INACTIVE)
+  expiresAt DateTime?          @db.Timestamptz(6)
+  metadata  Json               @default("{}")
+  createdAt DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime           @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, status])
+  @@map("tenant_features")
+  @@schema("platform")
+}
+
+// ---------------------------------------------------------------------------
+// app schema — tenant-owned (RLS enforced in migration 0002)
+// ---------------------------------------------------------------------------
+
+model Role {
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String  @db.Uuid
+  name      String // Firm Admin / Lawyer / Staff / Read-only (+ custom)
+  isSystem  Boolean @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  users           User[]
+  rolePermissions RolePermission[]
+
+  @@unique([tenantId, name])
+  @@map("roles")
+  @@schema("app")
+}
+
+model RolePermission {
+  id           String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String @db.Uuid
+  roleId       String @db.Uuid
+  permissionId String @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id])
+
+  @@unique([roleId, permissionId])
+  @@index([tenantId])
+  @@map("role_permissions")
+  @@schema("app")
+}
+
+model User {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String     @db.Uuid
+  clerkUserId String     @unique
+  roleId      String     @db.Uuid
+  name        String
+  email       String
+  phone       String?
+  // Phase 12: per-user notification channel preferences, e.g.
+  // { "DASHBOARD": true, "WEB_PUSH": true, "WHATSAPP_TEMPLATE": false, "EMAIL_DIGEST": true }
+  notificationPrefs Json @default("{}")
+  status      UserStatus @default(INVITED)
+  createdAt   DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime   @updatedAt @db.Timestamptz(6)
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  role          Role           @relation(fields: [roleId], references: [id])
+  lawyer        Lawyer?
+  assignedConversations Conversation[]
+  sentMessages  Message[]
+  notifications Notification[]
+  pushSubscriptions PushSubscription[]
+  recordedPayments Payment[]
+  conversationNotes ConversationNote[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId, status])
+  @@map("users")
+  @@schema("app")
+}
+
+model Lawyer {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String   @db.Uuid
+  userId               String   @unique @db.Uuid
+  practiceAreas        String[] @default([])
+  whatsappNumber       String?
+  bio                  String?
+  bioUr                String?
+  yearsExperience      Int?
+  barCouncil           String?
+  barEnrollmentNumber  String?
+  education            String[] @default([])
+  achievements         String[] @default([])
+  languages            String[] @default([])
+  profileCompletedAt   DateTime? @db.Timestamptz(6)
+  createdAt            DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant                  Tenant               @relation(fields: [tenantId], references: [id])
+  user                    User                 @relation(fields: [userId], references: [id])
+  availability            LawyerAvailability[]
+  caseLawyers             CaseLawyer[]
+  appointments            Appointment[]
+  acknowledgedEscalations Escalation[]
+  calendar                LawyerCalendar?
+  caseHighlights          LawyerCaseHighlight[]
+
+  @@index([tenantId])
+  @@map("lawyers")
+  @@schema("app")
+}
+
+model LawyerCaseHighlight {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String   @db.Uuid
+  lawyerId          String   @db.Uuid
+  caseId            String   @db.Uuid
+  publicTitle       String
+  publicOutcome     String
+  consentRecordedAt DateTime @db.Timestamptz(6)
+  visibleToAi       Boolean  @default(true)
+  createdAt         DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  lawyer Lawyer @relation(fields: [lawyerId], references: [id], onDelete: Cascade)
+  case   Case   @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@unique([lawyerId, caseId])
+  @@index([tenantId, lawyerId])
+  @@map("lawyer_case_highlights")
+  @@schema("app")
+}
+
+model LawyerCalendar {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String   @db.Uuid
+  lawyerId            String   @unique @db.Uuid
+  googleRefreshTokenEnc String
+  googleCalendarId    String   @default("primary")
+  connectedAt         DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  lawyer Lawyer @relation(fields: [lawyerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("lawyer_calendars")
+  @@schema("app")
+}
+
+model LawyerAvailability {
+  id                String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String @db.Uuid
+  lawyerId          String @db.Uuid
+  weekday           Int // 0=Sunday … 6=Saturday
+  startTime         String // "09:00" local firm time (timezone in tenant settings)
+  endTime           String
+  slotDurationMinutes Int @default(30)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  lawyer Lawyer @relation(fields: [lawyerId], references: [id], onDelete: Cascade)
+
+  @@unique([lawyerId, weekday, startTime])
+  @@index([tenantId])
+  @@map("lawyer_availability")
+  @@schema("app")
+}
+
+model Client {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String    @db.Uuid
+  waPhone           String // E.164 — the client's identity on WhatsApp
+  name              String?
+  cnic              String? // optional PK national ID (D-110)
+  preferredLanguage Language  @default(UNKNOWN)
+  notes             String?
+  createdAt         DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(6)
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  cases         Case[]
+  conversations Conversation[]
+  documents     Document[]
+  appointments  Appointment[]
+  payments      Payment[]
+
+  @@unique([tenantId, waPhone])
+  @@map("clients")
+  @@schema("app")
+}
+
+model Case {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String       @db.Uuid
+  clientId    String       @db.Uuid
+  reference   String // firm-scoped human ref, e.g. "FAM-2026-0142"
+  matterType  String // from tenant's enabled practice areas (settings jsonb)
+  status      CaseStatus   @default(LEAD)
+  urgency     Urgency      @default(NORMAL)
+  summary     String? // latest AI handoff summary (FR-AI-08)
+  intakeData  Json         @default("{}") // canonical English extraction (D-004)
+  openedAt    DateTime     @default(now()) @db.Timestamptz(6)
+  closedAt    DateTime?    @db.Timestamptz(6)
+  createdAt   DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime     @updatedAt @db.Timestamptz(6)
+
+  tenant        Tenant            @relation(fields: [tenantId], references: [id])
+  client        Client            @relation(fields: [clientId], references: [id])
+  caseLawyers   CaseLawyer[]
+  conversations Conversation[]
+  documents     Document[]
+  appointments  Appointment[]
+  payments      Payment[]
+  caseHighlights LawyerCaseHighlight[]
+  courtHearings  CourtHearing[]
+
+  @@unique([tenantId, reference])
+  @@index([tenantId, status])
+  @@index([tenantId, clientId])
+  @@map("cases")
+  @@schema("app")
+}
+
+model CaseLawyer {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String   @db.Uuid
+  caseId     String   @db.Uuid
+  lawyerId   String   @db.Uuid
+  role       String   @default("primary") // primary | assisting
+  assignedAt DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  case   Case   @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  lawyer Lawyer @relation(fields: [lawyerId], references: [id])
+
+  @@unique([caseId, lawyerId, role])
+  @@index([tenantId, lawyerId])
+  @@map("case_lawyers")
+  @@schema("app")
+}
+
+model Conversation {
+  id                    String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String            @db.Uuid
+  clientId              String            @db.Uuid
+  caseId                String?           @db.Uuid
+  assignedToId          String?           @db.Uuid
+  state                 ConversationState @default(AI_ACTIVE)
+  language              Language          @default(UNKNOWN)
+  // D-003: the 24h window, tracked explicitly; null = no open window
+  sessionWindowExpiresAt DateTime?        @db.Timestamptz(6)
+  // FR-AI-01 consent artifact: when the AI disclosure was sent
+  disclosedAt           DateTime?         @db.Timestamptz(6)
+  lastClientMessageAt   DateTime?         @db.Timestamptz(6)
+  lastOutboundAt        DateTime?         @db.Timestamptz(6)
+  createdAt             DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt             DateTime          @updatedAt @db.Timestamptz(6)
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  client         Client          @relation(fields: [clientId], references: [id])
+  case           Case?           @relation(fields: [caseId], references: [id])
+  assignedTo     User?           @relation(fields: [assignedToId], references: [id])
+  messages       Message[]
+  intakeSessions IntakeSession[]
+  escalations    Escalation[]
+  notes          ConversationNote[]
+
+  @@index([tenantId, state])
+  @@index([tenantId, assignedToId])
+  @@index([tenantId, clientId])
+  @@map("conversations")
+  @@schema("app")
+}
+
+// PARTITIONED monthly by createdAt (migration 0003). Composite @@id because PG
+// requires the partition key in the PK. Note: no unique constraint on wamid —
+// PG requires partition key in uniques; inbound idempotency is anchored by
+// platform.webhook_events.externalEventId instead.
+model Message {
+  id               String          @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String          @db.Uuid
+  conversationId   String          @db.Uuid
+  direction        MessageDirection
+  senderType       SenderType
+  senderUserId     String?         @db.Uuid // set when a firm user sent it
+  wamid            String? // Meta message id
+  contentType      ContentType     @default(TEXT)
+  body             String? // raw text always preserved (D-004)
+  languageDetected Language        @default(UNKNOWN)
+  // media refs, location payloads, interactive replies — structured, not text
+  payload          Json            @default("{}")
+  templateName     String?
+  deliveryStatus   DeliveryStatus  @default(QUEUED)
+  // FR-KB-03: FAQ citations [{kbId, chunkId, title}]
+  citations        Json            @default("[]")
+  correlationId    String?         @db.Uuid
+  createdAt        DateTime        @default(now()) @db.Timestamptz(6)
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  senderUser   User?        @relation(fields: [senderUserId], references: [id])
+
+  @@id([id, createdAt])
+  @@index([conversationId, createdAt])
+  @@index([tenantId, createdAt])
+  @@index([wamid])
+  @@map("messages")
+  @@schema("app")
+}
+
+model IntakeSession {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String       @db.Uuid
+  conversationId  String       @db.Uuid
+  status          IntakeStatus @default(IN_PROGRESS)
+  currentStep     String       @default("start")
+  // canonical structured extraction (English) per D-004
+  extractedFields Json         @default("{}")
+  completedAt     DateTime?    @db.Timestamptz(6)
+  createdAt       DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime     @updatedAt @db.Timestamptz(6)
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+
+  @@unique([tenantId, conversationId])
+  @@index([tenantId, status])
+  @@map("intake_sessions")
+  @@schema("app")
+}
+
+model Escalation {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String            @db.Uuid
+  conversationId  String            @db.Uuid
+  triggerType     EscalationTrigger
+  status          EscalationStatus  @default(OPEN)
+  detectedExcerpt String? // minimal excerpt evidencing the trigger (T2)
+  handoffReason   String? // detector/agent reason for the lawyer (T2)
+  handoffBrief    Json              @default("{}") // structured T2 brief (D-123 / FR-AI-08)
+  slaDeadline     DateTime // FR-NTF-02: 15 min proposed
+  acknowledgedBy  String?           @db.Uuid
+  acknowledgedAt  DateTime?         @db.Timestamptz(6)
+  resolvedAt      DateTime?         @db.Timestamptz(6)
+  createdAt       DateTime          @default(now()) @db.Timestamptz(6)
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  acknowledger Lawyer?      @relation(fields: [acknowledgedBy], references: [id])
+
+  @@index([tenantId, status])
+  @@map("escalations")
+  @@schema("app")
+}
+
+model Document {
+  id               String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String     @db.Uuid
+  caseId           String?    @db.Uuid
+  clientId         String     @db.Uuid
+  messageId        String?    @db.Uuid // provenance (FR-DOC-04)
+  storagePath      String // tenant-scoped path in Supabase Storage
+  filename         String
+  description      String?
+  mimeType         String
+  sizeBytes        Int
+  docType          DocType    @default(OTHER)
+  ocrStatus        OcrStatus  @default(PENDING)
+  // surfaced in UI; low-confidence extraction is never auto-applied (J4/R4)
+  ocrConfidence    Float?
+  extractedText    String? // full plain-text extraction for search/AI context
+  extractedFields  Json       @default("{}")
+  scanStatus       ScanStatus @default(PENDING)
+  isPinned         Boolean    @default(false)
+  version          Int        @default(1)
+  deletedAt        DateTime?  @db.Timestamptz(6)
+  createdAt        DateTime   @default(now()) @db.Timestamptz(6)
+
+  tenant  Tenant          @relation(fields: [tenantId], references: [id])
+  case    Case?           @relation(fields: [caseId], references: [id])
+  client  Client          @relation(fields: [clientId], references: [id])
+  chunks  DocumentChunk[]
+
+  @@index([tenantId, caseId])
+  @@index([tenantId, clientId])
+  @@index([tenantId, isPinned])
+  @@map("documents")
+  @@schema("app")
+}
+
+model DocumentChunk {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String  @db.Uuid
+  documentId String  @db.Uuid
+  chunkIndex Int
+  content    String
+  tokenCount Int
+  // vector(1536) — text-embedding-3-large requested at 1536 dims.
+  // Unsupported by Prisma: written/read via $queryRaw only (Phase 8).
+  embedding  Unsupported("vector(1536)")?
+  metadata   Json    @default("{}")
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, documentId])
+  @@map("document_chunks")
+  @@schema("app")
+}
+
+model DocumentRequest {
+  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String                @db.Uuid
+  caseId               String                @db.Uuid
+  clientId             String                @db.Uuid
+  description          String
+  status               DocumentRequestStatus @default(PENDING)
+  fulfilledDocumentId  String?               @db.Uuid
+  createdAt            DateTime              @default(now()) @db.Timestamptz(6)
+  fulfilledAt          DateTime?             @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, status])
+  @@map("document_requests")
+  @@schema("app")
+}
+
+model Appointment {
+  id         String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String            @db.Uuid
+  caseId     String?           @db.Uuid
+  clientId   String            @db.Uuid
+  lawyerId   String            @db.Uuid
+  startsAt   DateTime          @db.Timestamptz(6)
+  endsAt     DateTime          @db.Timestamptz(6)
+  status     AppointmentStatus @default(PENDING)
+  location   String?
+  notes      String?
+  reminderSentAt DateTime?     @db.Timestamptz(6)
+  confirmationSentAt DateTime? @db.Timestamptz(6)
+  externalEventId String?      // Google Calendar event id
+  externalCalendarId String?   // Google Calendar id (usually 'primary')
+  createdAt  DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime          @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  case   Case?  @relation(fields: [caseId], references: [id])
+  client Client @relation(fields: [clientId], references: [id])
+  lawyer Lawyer @relation(fields: [lawyerId], references: [id])
+
+  @@index([tenantId, lawyerId, startsAt])
+  @@index([tenantId, clientId])
+  @@map("appointments")
+  @@schema("app")
+  // Double-booking prevention: exclusion constraint on (lawyerId, time range)
+  // added in migration 0002 — Prisma can't express it (FR-APT-04).
+}
+
+model Payment {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String        @db.Uuid
+  caseId         String?       @db.Uuid
+  clientId       String        @db.Uuid
+  amountCents    Int // PKR paisa; integer money, never float
+  currency       String        @default("PKR") @db.Char(3)
+  method         PaymentMethod
+  status         PaymentStatus @default(REQUESTED)
+  // provider transaction id — idempotency key for rail webhooks (FR-PAY-02);
+  // null for manual entries (unique index is NULLS-distinct, set in 0002)
+  providerTxnId  String?
+  description    String?
+  requestedAt    DateTime      @default(now()) @db.Timestamptz(6)
+  paidAt         DateTime?     @db.Timestamptz(6)
+  recordedBy     String?       @db.Uuid // staff attribution for manual (FR-PAY-03)
+  metadata       Json          @default("{}")
+  createdAt      DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime      @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  case   Case?  @relation(fields: [caseId], references: [id])
+  client Client @relation(fields: [clientId], references: [id])
+  recordedByUser User? @relation(fields: [recordedBy], references: [id])
+
+  @@index([tenantId, status])
+  @@index([tenantId, caseId])
+  @@map("payments")
+  @@schema("app")
+}
+
+model Notification {
+  id        String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String              @db.Uuid
+  userId    String              @db.Uuid
+  type      String // escalation.opened, lead.qualified, document.received, payment.succeeded…
+  payload   Json                @default("{}")
+  channel   NotificationChannel @default(DASHBOARD)
+  readAt    DateTime?           @db.Timestamptz(6)
+  createdAt DateTime            @default(now()) @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, readAt])
+  @@map("notifications")
+  @@schema("app")
+}
+
+model PushSubscription {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @db.Uuid
+  userId    String   @db.Uuid
+  endpoint  String
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, endpoint])
+  @@index([tenantId, userId])
+  @@map("push_subscriptions")
+  @@schema("app")
+}
+
+model FirmPaymentDetails {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String   @unique @db.Uuid
+  detailsEnc String // AES-256-GCM encrypted JSON (D-024, D-110)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("firm_payment_details")
+  @@schema("app")
+}
+
+model CourtHearing {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @db.Uuid
+  caseId         String    @db.Uuid
+  courtName      String
+  judge          String?
+  hearingAt      DateTime  @db.Timestamptz(6)
+  location       String?
+  notes          String?
+  reminderSentAt DateTime? @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  case   Case   @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, hearingAt])
+  @@index([tenantId, caseId])
+  @@map("court_hearings")
+  @@schema("app")
+}
+
+model ConversationNote {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String   @db.Uuid
+  conversationId String   @db.Uuid
+  authorId       String   @db.Uuid
+  body           String
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  author       User         @relation(fields: [authorId], references: [id])
+
+  @@index([tenantId, conversationId])
+  @@map("conversation_notes")
+  @@schema("app")
+}
+
+model AnalyticsDaily {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String   @db.Uuid
+  date              DateTime @db.Date
+  newConversations  Int      @default(0)
+  aiHandled         Int      @default(0)
+  humanHandled      Int      @default(0)
+  escalations       Int      @default(0)
+  casesOpened       Int      @default(0)
+  casesClosed       Int      @default(0)
+  paymentsCents     Int      @default(0)
+  avgFirstResponseSec Int?   // null until enough samples
+  createdAt         DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, date])
+  @@index([tenantId, date])
+  @@map("analytics_daily")
+  @@schema("platform")
+}
+
+// PARTITIONED monthly, append-only (UPDATE/DELETE revoked in 0002 — FR-AUD-01).
+// Composite @@id: partition key must be in the PK.
+model AuditLog {
+  id            String    @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String    @db.Uuid
+  actorType     ActorType
+  actorId       String?   @db.Uuid
+  action        String // case.read, document.download, payment.refund…
+  entityType    String?
+  entityId      String?   @db.Uuid
+  metadata      Json      @default("{}")
+  ip            String?   @db.Inet
+  userAgent     String?
+  correlationId String?   @db.Uuid
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@id([id, createdAt])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, entityType, entityId])
+  @@map("audit_logs")
+  @@schema("app")
+}
+
+// PARTITIONED monthly. FR-AI-10: every LLM call, with cost and data tier.
+// Composite @@id: partition key must be in the PK.
+model AiLog {
+  id               String       @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String       @db.Uuid
+  agent            String // router | intake | classification | faq | summarization…
+  provider         String
+  model            String
+  promptVersionId  String?      @db.Uuid
+  correlationId    String?      @db.Uuid
+  latencyMs        Int?
+  tokensIn         Int          @default(0)
+  tokensOut        Int          @default(0)
+  costMicros       Int          @default(0) // USD micros
+  dataTier         DataTier
+  redactionApplied Boolean      @default(false)
+  status           AiCallStatus
+  error            String?
+  createdAt        DateTime     @default(now()) @db.Timestamptz(6)
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  promptVersion PromptVersion? @relation(fields: [promptVersionId], references: [id])
+
+  @@id([id, createdAt])
+  @@index([tenantId, createdAt])
+  @@index([correlationId])
+  @@map("ai_logs")
+  @@schema("app")
+}
+
+// Rendered prompt I/O samples for evaluation — T2-redacted only, never raw T3.
+model PromptLog {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String   @db.Uuid
+  promptVersionId String   @db.Uuid
+  inputRedacted   String
+  outputRedacted  String
+  evalScore       Float?
+  correlationId   String?  @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
+  promptVersion PromptVersion @relation(fields: [promptVersionId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@map("prompt_logs")
+  @@schema("app")
+}
+
+model KnowledgeBase {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String   @db.Uuid
+  title            String
+  content          String
+  language         Language @default(EN)
+  category         String?
+  status           KbStatus @default(DRAFT)
+  sourceDocumentId String?  @db.Uuid
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant   @relation(fields: [tenantId], references: [id])
+  chunks KbChunk[]
+
+  @@index([tenantId, status])
+  @@map("knowledge_base")
+  @@schema("app")
+}
+
+model KbChunk {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String   @db.Uuid
+  kbId       String   @db.Uuid
+  chunkIndex Int
+  content    String
+  tokenCount Int
+  // vector(1536) — text-embedding-3-large requested at 1536 dims.
+  // Unsupported by Prisma: written/read via $queryRaw only (Phase 8).
+  embedding  Unsupported("vector(1536)")?
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant Tenant        @relation(fields: [tenantId], references: [id])
+  kb     KnowledgeBase @relation(fields: [kbId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, kbId])
+  @@map("kb_chunks")
+  @@schema("app")
+  // HNSW index on embedding added in migration 0003 (Prisma can't express it).
+}
+
+model WhatsappAccount {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String               @unique @db.Uuid // one WABA per firm (D-002)
+  wabaId             String
+  phoneNumberId      String               @unique
+  displayPhoneNumber String
+  verificationStatus WaVerificationStatus @default(NOT_STARTED)
+  connectionStage    ConnectionStage      @default(OFFICIAL_CONNECT_STARTED)
+  qualityRating      String? // GREEN/YELLOW/RED from Meta
+  messagingTier      String? // Meta messaging-limit tier
+  // AES-256-GCM ciphertext of the WABA access token (key from env) — never
+  // plaintext at rest (NFR-SEC-02). Encryption helper lands in Phase 6.
+  accessTokenEnc     String?
+  createdAt          DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime             @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("whatsapp_accounts")
+  @@schema("app")
+}
+
+model PilotSession {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String             @unique @db.Uuid
+  status          PilotSessionStatus @default(PAIRING)
+  // E.164 numbers (no '+') allowed to talk to the pilot bridge (D-092).
+  allowlist       Json               @default("[]")
+  // AES-256-GCM ciphertext of Baileys session creds (same CryptoService).
+  sessionCredsEnc String?
+  expiresAt       DateTime           @db.Timestamptz(6)
+  lastSeenAt      DateTime?          @db.Timestamptz(6)
+  // Last terminal failure reason (handshake exhausted, logged out) — shown
+  // in the dashboard so "disconnected" is actionable instead of silent.
+  lastError       String?
+  lastErrorAt     DateTime?          @db.Timestamptz(6)
+  createdAt       DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime           @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("pilot_sessions")
+  @@schema("app")
+}
+
+model WhatsappTemplate {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String           @db.Uuid
+  name           String
+  language       String // "en", "ur" — seeded pack languages (D-003)
+  category       TemplateCategory
+  status         TemplateStatus   @default(DRAFT)
+  components     Json             @default("{}") // Meta template components
+  metaTemplateId String?
+  rejectionReason String?
+  createdAt      DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime         @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, name, language])
+  @@index([tenantId, status])
+  @@map("whatsapp_templates")
+  @@schema("app")
+}
+
+model WhatsappConnection {
+  id              String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String                  @unique @db.Uuid
+  instanceName    String                  @unique
+  connectionType  String                  @default("baileys")
+  status          String                  @default("disconnected")
+  phoneNumber     String?
+  displayName     String?
+  createdAt       DateTime                @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime                @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("whatsapp_connections")
+  @@schema("app")
+}

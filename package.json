@@ -1,0 +1,19 @@
+{
+  "name": "lawyer-agency",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Multi-tenant AI WhatsApp legal assistant for law firms in Pakistan",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

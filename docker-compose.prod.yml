@@ -1,0 +1,167 @@
+# Production-like local stack for Wakeel (Phase 15).
+# In real production (Coolify/ECS/K8s) the API and worker are separate
+# deployments of the same image with API_ROLE=api|worker.
+
+services:
+  postgres:
+    build:
+      context: ./infra/postgres
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: lawyer_agency
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: migrator
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      MIGRATION_DATABASE_URL: ${MIGRATION_DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["sh", "/app/infra/scripts/migrate.sh"]
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_ROLE: api
+      API_PORT: 3001
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      CLERK_JWKS_URL: ${CLERK_JWKS_URL}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL}
+      META_APP_ID: ${META_APP_ID}
+      META_APP_SECRET: ${META_APP_SECRET}
+      META_WEBHOOK_VERIFY_TOKEN: ${META_WEBHOOK_VERIFY_TOKEN}
+      META_GRAPH_BASE_URL: ${META_GRAPH_BASE_URL:-https://graph.facebook.com/v22.0}
+      META_REDIRECT_URI: ${META_REDIRECT_URI}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
+      VAPID_SUBJECT: ${VAPID_SUBJECT}
+      EMAIL_FROM: ${EMAIL_FROM}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      SENTRY_DSN: ${SENTRY_DSN}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+      MEDIA_STORAGE_PATH: ${MEDIA_STORAGE_PATH:-/var/lib/wakeel/media}
+    volumes:
+      - wakeel_media:/var/lib/wakeel/media
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_ROLE: worker
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      CLERK_JWKS_URL: ${CLERK_JWKS_URL}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL}
+      META_APP_ID: ${META_APP_ID}
+      META_APP_SECRET: ${META_APP_SECRET}
+      META_WEBHOOK_VERIFY_TOKEN: ${META_WEBHOOK_VERIFY_TOKEN}
+      META_GRAPH_BASE_URL: ${META_GRAPH_BASE_URL:-https://graph.facebook.com/v22.0}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
+      VAPID_SUBJECT: ${VAPID_SUBJECT}
+      EMAIL_FROM: ${EMAIL_FROM}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      SENTRY_DSN: ${SENTRY_DSN}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+      MEDIA_STORAGE_PATH: ${MEDIA_STORAGE_PATH:-/var/lib/wakeel/media}
+    volumes:
+      - wakeel_media:/var/lib/wakeel/media
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_INTERNAL_URL: http://api:3001
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+    depends_on:
+      api:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+      - web
+
+volumes:
+  pgdata:
+  redisdata:
+  wakeel_media:

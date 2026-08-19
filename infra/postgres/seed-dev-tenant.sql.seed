@@ -1,0 +1,13 @@
+-- Dev seam tenant seed (D-037). Runs as postgres owner after migrations so
+-- RLS policies do not block the insert. Safe to replay: ON CONFLICT DO NOTHING.
+INSERT INTO platform.tenants (id, name, slug, status, settings, "createdAt", "updatedAt")
+VALUES (
+  '018f3d6e-7c8b-7a2c-9d4e-5f6a7b8c9d0e',
+  'Development Firm',
+  'development-firm',
+  'TRIAL',
+  '{}',
+  NOW(),
+  NOW()
+)
+ON CONFLICT (id) DO NOTHING;

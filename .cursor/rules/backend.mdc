@@ -1,0 +1,19 @@
+---
+description: Backend development rules
+globs:
+  - "apps/api/**/*"
+alwaysApply: false
+---
+# Backend Rules
+
+- Keep routes and controllers thin.
+- Put business logic into services or use-cases.
+- Keep database access separate from HTTP handling.
+- Validate request body, query, params, and external API responses.
+- Use consistent error handling.
+- Return appropriate HTTP status codes.
+- Never expose internal errors or implementation details.
+- Enforce authorization on the server.
+- Use transactions when multiple writes must be atomic.
+- Avoid N+1 database queries.
+- Add tests for important business logic and edge cases.

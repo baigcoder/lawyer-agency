@@ -1,0 +1,22 @@
+node_modules/
+dist/
+.next/
+.turbo/
+coverage/
+*.tsbuildinfo
+
+# Environment — secrets never enter the repo (NFR-SEC-02)
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Prisma generated client
+generated/

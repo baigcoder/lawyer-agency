@@ -1,0 +1,220 @@
+# Local development stack. Production uses Coolify (Phase 15) — this compose
+# file exists so `docker compose up` gives every dev an identical data plane.
+# Both API and worker roles are started so the pilot Baileys bridge (D-092)
+# and the AI event loop work out of the box.
+services:
+  postgres:
+    build:
+      context: ./infra/postgres
+      dockerfile: Dockerfile
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: change-me
+      POSTGRES_DB: lawyer_agency
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: migrator
+    env_file:
+      - apps/api/.env
+    environment:
+      MIGRATION_DATABASE_URL: ${MIGRATION_DATABASE_URL:-postgresql://postgres:change-me@postgres:5432/lawyer_agency}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://app_user:change-me@postgres:5432/lawyer_agency}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  seed:
+    build:
+      context: ./infra/postgres
+      dockerfile: Dockerfile
+    environment:
+      PGPASSWORD: change-me
+    command: >
+      psql
+      postgresql://postgres:change-me@postgres:5432/lawyer_agency
+      -v ON_ERROR_STOP=1
+      -f /seed.sql.seed
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: runner
+    env_file:
+      - apps/api/.env
+    environment:
+      NODE_ENV: development
+      API_ROLE: api
+      API_PORT: 3001
+      DATABASE_URL: postgresql://app_user:change-me@postgres:5432/lawyer_agency
+      REDIS_URL: redis://redis:6379
+      # Inside Docker the Evolution container is reached by service name, and
+      # Evolution calls Wakeel back by the api service name (not localhost).
+      EVOLUTION_API_BASE_URL: http://evolution-api:8080
+      EVOLUTION_SERVER_URL: http://api:3001
+      # Shared with worker so inbox can stream voice notes the worker stored.
+      MEDIA_STORAGE_PATH: /var/lib/wakeel/media
+    ports:
+      - "3001:3001"
+    volumes:
+      - wakeel_media:/var/lib/wakeel/media
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      evolution-api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: runner
+    env_file:
+      - apps/api/.env
+    environment:
+      NODE_ENV: development
+      API_ROLE: worker
+      DATABASE_URL: postgresql://app_user:change-me@postgres:5432/lawyer_agency
+      REDIS_URL: redis://redis:6379
+      EVOLUTION_API_BASE_URL: http://evolution-api:8080
+      EVOLUTION_SERVER_URL: http://api:3001
+      MEDIA_STORAGE_PATH: /var/lib/wakeel/media
+    volumes:
+      - wakeel_media:/var/lib/wakeel/media
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      evolution-api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  evolution-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: change-me
+      POSTGRES_DB: evolution_api
+    ports:
+      - "5433:5432"
+    volumes:
+      - evolution_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  evolution-redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6380:6379"
+    volumes:
+      - evolution_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  evolution-api:
+    image: evoapicloud/evolution-api:latest
+    environment:
+      SERVER_URL: ${EVOLUTION_SERVER_URL:-http://localhost:8080}
+      # Inside Docker, Evolution calls back to the Wakeel API service by name.
+      EVOLUTION_SERVER_URL: http://api:3001
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:-evolution-api-key-change-me}
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: ${EVOLUTION_DATABASE_URL:-postgresql://postgres:change-me@evolution-postgres:5432/evolution_api?schema=public}
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      # Heavy history/chat sync competes with Baileys pre-key upload and causes 408 timeouts.
+      DATABASE_SAVE_DATA_CHATS: "false"
+      DATABASE_SAVE_DATA_CONTACTS: "false"
+      DATABASE_SAVE_DATA_HISTORIC: "false"
+      DATABASE_SAVE_DATA_LABELS: "false"
+      DATABASE_CONNECTION_CLIENT_NAME: evolution-api
+      # Local cache avoids Redis-over-Docker latency during pre-key handshake (Evolution #2437).
+      CACHE_REDIS_ENABLED: "false"
+      CACHE_LOCAL_ENABLED: "true"
+      REDIS_ENABLED: "true"
+      REDIS_URI: ${EVOLUTION_REDIS_URL:-redis://evolution-redis:6379}
+      REDIS_PREFIX_KEY: evolution
+      WEBSOCKET_ENABLED: "false"
+      WEBHOOK_GLOBAL_ENABLED: "false"
+      LOG_LEVEL: info
+      TELEMETRY_ENABLED: "false"
+      NODE_OPTIONS: --dns-result-order=ipv4first
+      CONFIG_SESSION_PHONE_CLIENT: Wakeel
+      CONFIG_SESSION_PHONE_NAME: Chrome
+    ports:
+      - "8080:8080"
+    depends_on:
+      evolution-postgres:
+        condition: service_healthy
+      evolution-redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
+  redisdata:
+  evolution_pgdata:
+  evolution_redisdata:
+  wakeel_media:

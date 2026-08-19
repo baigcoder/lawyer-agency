@@ -1,0 +1,48 @@
+---
+description: Core engineering rules for this project
+alwaysApply: true
+---
+
+# Core Engineering Rules
+
+## General
+- Read existing code before modifying it.
+- Follow the existing project architecture and conventions.
+- Keep changes focused on the requested task.
+- Do not modify unrelated files.
+- Reuse existing utilities, components, services, and dependencies where appropriate.
+- Prefer simple, maintainable solutions over unnecessary abstraction.
+
+## Code Quality
+- Use TypeScript where the project supports it.
+- Avoid `any` unless there is a justified reason.
+- Keep functions and modules focused.
+- Avoid duplicated business logic.
+- Handle errors explicitly.
+- Do not silently ignore failures.
+
+## Security
+- Never hardcode API keys, passwords, tokens, or secrets.
+- Use environment variables for secrets.
+- Treat all external input as untrusted.
+- Validate input at system boundaries.
+- Never expose secrets or internal errors to clients.
+
+## Changes
+- Inspect relevant files before making changes.
+- Preserve existing behavior unless the task explicitly requires a change.
+- Do not rewrite working code unnecessarily.
+- Keep APIs and interfaces consistent.
+
+## Validation
+- Run the relevant type checks after meaningful changes.
+- Run linting after meaningful changes.
+- Run relevant tests.
+- Fix validation failures before considering the task complete.
+
+## Final Response
+Report:
+- what changed
+- files changed
+- validation performed
+- remaining issues or risks
