@@ -29,7 +29,14 @@ export class ClerkVerifier implements TokenVerifier {
   async verify(token: string): Promise<VerifiedToken> {
     // `jwtKey` accepts a PEM public key, not a JWKS URL. The Clerk server
     // secret lets the SDK fetch and rotate the matching JWK safely.
-    const result = await verifyToken(token, { secretKey: this.secretKey });
+    let result: Awaited<ReturnType<typeof verifyToken>>;
+    try {
+      result = await verifyToken(token, { secretKey: this.secretKey });
+    } catch {
+      // Mismatched CLERK_SECRET_KEY vs browser session (common when Docker
+      // was started from another checkout) must not surface as a 500.
+      throw new UnauthorizedException('Clerk session could not be verified — sign out and back in, or align CLERK_SECRET_KEY with the web app');
+    }
     if ('errors' in result) {
       // Clerk returns a result union for invalid credentials instead of
       // always throwing. Never turn that into a fabricated user identity.
