@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="50%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+    <linearGradient id="emeraldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background rounded squircle -->
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#bgGrad)" stroke="#1e293b" stroke-width="8"/>
+
+  <!-- Subtle glow ring -->
+  <rect x="24" y="24" width="464" height="464" rx="100" fill="none" stroke="url(#emeraldGrad)" stroke-width="3" opacity="0.3"/>
+
+  <!-- Central Pillar & Beam (Scales of Justice + W shape) -->
+  <g transform="translate(0, 8)">
+    <!-- Base -->
+    <path d="M 176 400 L 336 400 A 8 8 0 0 0 344 392 L 344 380 A 8 8 0 0 0 336 372 L 272 372 L 272 168 L 368 168 A 12 12 0 0 0 380 156 L 380 144 A 12 12 0 0 0 368 132 L 272 132 L 272 108 A 12 12 0 0 0 256 96 A 12 12 0 0 0 240 108 L 240 132 L 144 132 A 12 12 0 0 0 132 144 L 132 156 A 12 12 0 0 0 144 168 L 240 168 L 240 372 L 176 372 A 8 8 0 0 0 168 380 L 168 392 A 8 8 0 0 0 176 400 Z" fill="url(#goldGrad)"/>
+
+    <!-- Pillar Finial Top Gem -->
+    <circle cx="256" cy="88" r="16" fill="url(#emeraldGrad)" filter="url(#glow)"/>
+
+    <!-- Left Scale Pan & Strings -->
+    <g>
+      <!-- Chains -->
+      <line x1="148" y1="168" x2="96" y2="280" stroke="url(#goldGrad)" stroke-width="6" stroke-linecap="round"/>
+      <line x1="148" y1="168" x2="200" y2="280" stroke="url(#goldGrad)" stroke-width="6" stroke-linecap="round"/>
+      <!-- Bowl -->
+      <path d="M 88 280 C 88 330 208 330 208 280 Z" fill="url(#goldGrad)"/>
+    </g>
+
+    <!-- Right Scale Pan & Strings -->
+    <g>
+      <!-- Chains -->
+      <line x1="364" y1="168" x2="312" y2="280" stroke="url(#goldGrad)" stroke-width="6" stroke-linecap="round"/>
+      <line x1="364" y1="168" x2="416" y2="280" stroke="url(#goldGrad)" stroke-width="6" stroke-linecap="round"/>
+      <!-- Bowl -->
+      <path d="M 304 280 C 304 330 424 330 424 280 Z" fill="url(#goldGrad)"/>
+    </g>
+
+    <!-- Emerald W emblem accent in center -->
+    <path d="M 216 220 L 236 290 L 256 240 L 276 290 L 296 220" fill="none" stroke="url(#emeraldGrad)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  </g>
+</svg>

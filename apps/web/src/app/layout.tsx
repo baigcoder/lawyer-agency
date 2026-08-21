@@ -18,6 +18,14 @@ export const metadata: Metadata = {
   title: { default: 'Wakeel — AI WhatsApp intake for law firms', template: '%s · Wakeel' },
   description:
     'Multi-tenant platform letting law firms run client intake, communication, and case coordination over WhatsApp — with AI that assists lawyers, never replaces them.',
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', sizes: 'any' },
+    ],
+    shortcut: '/favicon.ico',
+    apple: '/icon.png',
+  },
 };
 
 /**
