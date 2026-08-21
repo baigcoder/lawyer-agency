@@ -210,7 +210,9 @@ services:
       retries: 10
 
   evolution-api:
-    image: evoapicloud/evolution-api:latest
+    build:
+      context: .
+      dockerfile: infra/evolution/Dockerfile
     environment:
       SERVER_URL: ${EVOLUTION_SERVER_URL:-http://localhost:8080}
       # Inside Docker, Evolution calls back to the Wakeel API service by name.
@@ -244,9 +246,6 @@ services:
       CONFIG_SESSION_PHONE_NAME: UWP
     ports:
       - "8080:8080"
-    volumes:
-      - ./infra/evolution:/wavoip-patch:ro
-    entrypoint: ["/bin/bash", "/wavoip-patch/entrypoint-wavoip.sh"]
     depends_on:
       evolution-postgres:
         condition: service_healthy
