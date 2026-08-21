@@ -7,6 +7,7 @@ import { AiLoggerService } from '../../infrastructure/ai-logger.service';
 import type { AgentResult, EscalationSignal, Language } from '../../domain/types';
 import type { AiRunContext } from '../ai-context.types';
 import { mergePromptVariables } from '../ai-prompt-variables';
+import { rewriteMissingAnswerReply } from '../missing-answer-reply';
 import { MODEL_ROUTER, PROMPT_REPOSITORY, type ModelRouter, type PromptRepository } from '../../application/ports';
 
 const faqSchema = z.looseObject({
@@ -25,7 +26,7 @@ const faqSchema = z.looseObject({
 
 /**
  * FAQ agent: answers general process questions using retrieved context.
- * If no relevant material is found, it declines rather than hallucinate.
+ * Empty KB is not a dead end — keep talking and ask one follow-up.
  */
 @Injectable()
 export class FaqAgent {
@@ -47,20 +48,6 @@ export class FaqAgent {
     correlationId?: string | null | undefined;
     escalation?: EscalationSignal | null | undefined;
   }): Promise<AgentResult> {
-    if (params.context.retrievedChunks.length === 0 && !hasOwnerCredentialsContext(params.context)) {
-      return {
-        responseText:
-          params.language === 'UR'
-            ? `معذرت، مجھے اس سوال کا جواب نہیں مل سکا۔ ${params.context.firm.displayName} کا وکیل جلد مدد کرے گا۔`
-            : `I'm sorry, I don't have information on that. A lawyer at ${params.context.firm.displayName} will assist you shortly.`,
-        languageDetected: params.language,
-        citations: [],
-        needsLawyer: true,
-        handoffReason: 'No approved knowledge-base information matched the client question',
-        escalation: params.escalation ?? undefined,
-      };
-    }
-
     const prompt = (await this.prompts.findActive(params.tenantId, this.agent)) ?? {
       id: null,
       agent: this.agent,
@@ -91,7 +78,7 @@ export class FaqAgent {
       model: choice.model,
       promptVersionId: prompt.id,
       correlationId: params.correlationId,
-      temperature: 0.2,
+      temperature: 0.45,
       maxTokens: 700,
       timeoutMs: 20_000,
     });
@@ -107,7 +94,7 @@ export class FaqAgent {
     });
 
     return {
-      responseText: result.output.responseText,
+      responseText: rewriteMissingAnswerReply(result.output.responseText, params.language),
       languageDetected: params.language,
       needsLawyer: result.output.needsLawyer,
       handoffReason: result.output.handoffReason,
@@ -138,14 +125,14 @@ Lead lawyer / owner credentials (T1-safe, anonymized — never invent details):
 
 Do NOT give specific legal advice, predict outcomes, or cite laws beyond the context.
 Answer useful general process and document-checklist questions directly when the context supports them.
-If the context does not contain the answer, say you will have a lawyer confirm — set needsLawyer=true. Never invent fees, timelines, or document lists.
-Set needsLawyer=true for case-specific interpretation, strategy, or representation.
-Reply in {{language}}. Roman Urdu stays Roman Urdu. Cite sources as [1], [2] only when you used them.
+If the knowledge-base context is empty or does not contain the answer: acknowledge what they said, use firm background / hours / fee if relevant, and ask ONE useful follow-up. NEVER say you could not find the answer (جواب نہیں مل سکا / jawab nahi mil saka / I don't have that on file). Do not set needsLawyer for a missing FAQ.
+Set needsLawyer=true only for case-specific legal advice, strategy, representation, or an explicit ask to speak with a lawyer.
+Reply in {{language}}. Roman Urdu stays Roman Urdu. Spoken Urdu stays Urdu. Cite sources as [1], [2] only when you used them.
 
-Prior conversation:
+Prior conversation (voice-note transcripts count as real turns):
 {{conversationHistory}}
 
-Knowledge-base context:
+Knowledge-base context (firm articles plus general Pakistani legal-process notes). Process notes are orientation only — never legal advice, never predict outcomes, never invent this firm's fees:
 {{context}}
 
 Return JSON:
@@ -155,16 +142,3 @@ Return JSON:
 - handoffReason: short operational reason when needsLawyer is true
 
 User question: {{clientText}}`;
-
-function hasOwnerCredentialsContext(ctx: AiRunContext): boolean {
-  const o = ctx.ownerProfile;
-  if (!o) return false;
-  return Boolean(
-    o.bio?.trim() ||
-      o.bioUr?.trim() ||
-      o.yearsExperience != null ||
-      o.barCouncil?.trim() ||
-      o.achievements.length ||
-      o.featuredCases.length,
-  );
-}

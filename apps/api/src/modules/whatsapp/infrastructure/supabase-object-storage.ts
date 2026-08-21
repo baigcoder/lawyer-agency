@@ -7,24 +7,24 @@ import type { ObjectStorage } from '../application/ports';
 @Injectable()
 export class SupabaseObjectStorage implements ObjectStorage {
   private readonly logger = new Logger(SupabaseObjectStorage.name);
-  private readonly client: SupabaseClient;
+  private readonly client: SupabaseClient | null;
   private readonly bucket: string;
 
   constructor(config: ConfigService<Env, true>) {
     const url = config.get('SUPABASE_URL', { infer: true });
     const key = config.get('SUPABASE_SERVICE_ROLE_KEY', { infer: true });
     this.bucket = config.get('SUPABASE_STORAGE_BUCKET', { infer: true });
-    if (!url || !key) {
-      throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for SupabaseObjectStorage');
-    }
-    this.client = createClient(url, key, {
-      auth: { persistSession: false, autoRefreshToken: false },
-      realtime: false as never,
-    });
+    this.client =
+      url && key
+        ? createClient(url, key, {
+            auth: { persistSession: false, autoRefreshToken: false },
+            realtime: false as never,
+          })
+        : null;
   }
 
   async put(path: string, buffer: Buffer): Promise<{ path: string }> {
-    const { data, error } = await this.client.storage.from(this.bucket).upload(path, buffer, {
+    const { data, error } = await this.requireClient().storage.from(this.bucket).upload(path, buffer, {
       upsert: true,
       contentType: this.guessContentType(path),
     });
@@ -36,7 +36,7 @@ export class SupabaseObjectStorage implements ObjectStorage {
   }
 
   async get(path: string): Promise<Buffer> {
-    const { data, error } = await this.client.storage.from(this.bucket).download(path);
+    const { data, error } = await this.requireClient().storage.from(this.bucket).download(path);
     if (error || !data) {
       this.logger.error({ path, error: error?.message }, 'supabase download failed');
       throw new Error(`Failed to download object: ${error?.message ?? 'empty response'}`);
@@ -45,7 +45,7 @@ export class SupabaseObjectStorage implements ObjectStorage {
   }
 
   async getSignedUrl(path: string, expiresInSeconds = 3600): Promise<string> {
-    const { data, error } = await this.client.storage.from(this.bucket).createSignedUrl(path, expiresInSeconds);
+    const { data, error } = await this.requireClient().storage.from(this.bucket).createSignedUrl(path, expiresInSeconds);
     if (error) {
       this.logger.error({ path, error: error.message }, 'supabase signed url failed');
       throw new Error(`Failed to create signed URL: ${error.message}`);
@@ -54,8 +54,15 @@ export class SupabaseObjectStorage implements ObjectStorage {
   }
 
   getUrl(path: string): string {
-    const { data } = this.client.storage.from(this.bucket).getPublicUrl(path);
+    const { data } = this.requireClient().storage.from(this.bucket).getPublicUrl(path);
     return data.publicUrl;
+  }
+
+  private requireClient(): SupabaseClient {
+    if (!this.client) {
+      throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for SupabaseObjectStorage');
+    }
+    return this.client;
   }
 
   private guessContentType(path: string): string {

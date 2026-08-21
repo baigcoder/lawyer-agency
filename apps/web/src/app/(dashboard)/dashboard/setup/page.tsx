@@ -40,7 +40,7 @@ import {
   pilotTestInboundSchema,
 } from '@/lib/schemas/whatsapp';
 import { inboxDetailSchema } from '@/lib/schemas/inbox';
-import { roleListSchema, userListSchema, userSummarySchema, inviteUserSchema } from '@/lib/schemas/users';
+import { roleListSchema, userListSchema, inviteUserResultSchema, inviteUserSchema } from '@/lib/schemas/users';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -322,7 +322,7 @@ function TeamStep({ onNext, onBack }: { onNext: () => void; onBack: () => void }
 
   const invite = useMutation({
     mutationFn: (body: z.infer<typeof inviteUserSchema>) =>
-      apiRequest('/v1/users', { method: 'POST', body, schema: userSummarySchema }),
+      apiRequest('/v1/users', { method: 'POST', body, schema: inviteUserResultSchema }),
     onSuccess: () => {
       toast.success('Invitation sent. Clerk will email them to join this firm.');
       setName('');

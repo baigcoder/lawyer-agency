@@ -100,6 +100,13 @@ export interface MetaCloudApi {
 
   /** Download media bytes from Meta's CDN via the Graph API media endpoint. */
   downloadMedia(params: { accessToken: string; mediaId: string }): Promise<MediaDownloadResult>;
+
+  /** WhatsApp Cloud Calling actions (D-124): pre_accept / accept / reject / terminate. */
+  postCall(params: {
+    accessToken: string;
+    phoneNumberId: string;
+    body: Record<string, unknown>;
+  }): Promise<void>;
 }
 
 export interface UpsertTemplateInput {
@@ -223,3 +230,19 @@ export interface ObjectStorage {
 }
 
 export const OBJECT_STORAGE = Symbol('OBJECT_STORAGE');
+
+export type WhatsappCallAction = 'pre_accept' | 'accept' | 'reject' | 'terminate';
+
+export interface WhatsappCallActionInput {
+  tenantId: string;
+  instanceName: string;
+  providerCallId: string;
+  action: WhatsappCallAction;
+  sdpAnswer?: string | undefined;
+}
+
+export interface WhatsappCallingPort {
+  sendCallAction(input: WhatsappCallActionInput): Promise<void>;
+}
+
+export const WHATSAPP_CALLING = Symbol('WHATSAPP_CALLING');

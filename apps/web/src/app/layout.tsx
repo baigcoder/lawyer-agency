@@ -18,6 +18,7 @@ export const metadata: Metadata = {
   title: { default: 'Wakeel — AI WhatsApp intake for law firms', template: '%s · Wakeel' },
   description:
     'Multi-tenant platform letting law firms run client intake, communication, and case coordination over WhatsApp — with AI that assists lawyers, never replaces them.',
+  applicationName: 'Wakeel',
   icons: {
     icon: [
       { url: '/icon.svg', type: 'image/svg+xml' },
@@ -54,6 +55,16 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       {clerkEnabled ? (
         <ClerkProvider
           afterSignOutUrl="/"
+          signInUrl="/sign-in"
+          signUpUrl="/sign-up"
+          signInForceRedirectUrl="/dashboard"
+          signUpForceRedirectUrl="/dashboard"
+          signInFallbackRedirectUrl="/dashboard"
+          signUpFallbackRedirectUrl="/dashboard"
+          taskUrls={{
+            'choose-organization': '/onboarding',
+            'reset-password': '/reset-password',
+          }}
         >
           {body}
         </ClerkProvider>

@@ -5,14 +5,52 @@ import { TEXT_TO_SPEECH, type TextToSpeechPort, type TtsVoice } from './text-to-
 export const voicePreviewInputSchema = z.object({
   voiceId: z.string().min(1).max(80),
   language: z.enum(['en', 'ur']),
+  voiceGender: z.enum(['male', 'female']).default('female'),
+  tone: z.enum(['friendly', 'formal', 'concise']).optional(),
+  displayName: z.string().trim().min(1).max(80).optional(),
 });
 
 export type VoicePreviewInput = z.infer<typeof voicePreviewInputSchema>;
 
-const PREVIEW_TEXT = {
-  en: "Hello, I'm the AI assistant for your law firm. How may I help you today?",
-  ur: 'السلام علیکم، میں آپ کے قانونی دفتر کا معاون ہوں۔ میں آپ کی کیسے مدد کر سکتا ہوں؟',
-} as const;
+type PreviewTone = 'friendly' | 'formal' | 'concise';
+
+/** Spoken-safe sample (no slash/dash punctuation TTS would read aloud). */
+export function buildVoicePreviewText(input: {
+  language: 'en' | 'ur';
+  tone?: PreviewTone | undefined;
+  displayName?: string | undefined;
+}): string {
+  const firm = sanitizeDisplayName(input.displayName) || (input.language === 'ur' ? 'دفتر' : 'the firm');
+  const tone = input.tone ?? 'friendly';
+
+  if (input.language === 'ur') {
+    if (tone === 'formal') {
+      return `السلام علیکم۔ میں ${firm} کا اسسٹنٹ ہوں، وکیل خود نہیں۔ بتائیں آپ کو کس طرح مدد چاہیے؟`;
+    }
+    if (tone === 'concise') {
+      return `السلام علیکم، ${firm} کا اسسٹنٹ۔ بتائیں کیا چاہیے؟`;
+    }
+    return `السلام علیکم۔ میں ${firm} کا اسسٹنٹ ہوں، وکیل خود نہیں۔ بتائیں آپ کو کیا چاہیے؟`;
+  }
+
+  if (tone === 'formal') {
+    return `Assalamualaikum. I am the assistant for ${firm}, not the lawyer. Please tell me how I can help.`;
+  }
+  if (tone === 'concise') {
+    return `Assalamualaikum. ${firm} assistant. How can I help?`;
+  }
+  return `Assalamualaikum. I'm the assistant for ${firm}, not the lawyer. How can I help you today?`;
+}
+
+function sanitizeDisplayName(raw: string | undefined): string {
+  if (!raw) return '';
+  return raw
+    .replace(/[*_`#~>]+/g, '')
+    .replace(/\s*[—–―/]+\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+}
 
 @Injectable()
 export class VoicePreviewService {
@@ -31,9 +69,9 @@ export class VoicePreviewService {
     }
     try {
       const result = await this.tts.synthesize({
-        text: PREVIEW_TEXT[input.language],
+        text: buildVoicePreviewText(input),
         voiceId: input.voiceId,
-        voiceGender: 'female',
+        voiceGender: input.voiceGender,
         language: input.language,
       });
       return {

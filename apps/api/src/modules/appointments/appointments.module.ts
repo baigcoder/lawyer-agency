@@ -24,6 +24,6 @@ import { AppointmentsController } from './interface/appointments.controller';
     SlotFinderService,
     GoogleCalendarService,
   ],
-  exports: [AppointmentsService, SlotFinderService],
+  exports: [AppointmentsService, SlotFinderService, AppointmentNotificationsService],
 })
 export class AppointmentsModule {}

@@ -10,6 +10,8 @@ import { InvalidWebhookSignatureError } from '../domain/errors';
 import { WHATSAPP_CONNECTION_REPOSITORY, type WhatsappConnectionRepository } from './ports';
 import { EvolutionQrStore } from './evolution-qr.store';
 import { Inject } from '@nestjs/common';
+import { isCallWebhookEvent, normalizeCallEvent } from '../../voice-calls/application/normalize-call-event';
+import type { VoiceCallJob } from '../../voice-calls/application/voice-session.runner';
 
 export interface EvolutionWebhookPayload {
   event: string;
@@ -71,6 +73,7 @@ export class EvolutionWebhookIngestService {
     private readonly qrStore: EvolutionQrStore,
     @InjectQueue(QUEUES.WHATSAPP_INBOUND) private readonly inboundQueue: Queue,
     @InjectQueue(QUEUES.WHATSAPP_STATUS) private readonly statusQueue: Queue,
+    @InjectQueue(QUEUES.VOICE_CALLS) private readonly voiceCallsQueue: Queue,
   ) {}
 
   async ingest(
@@ -115,9 +118,37 @@ export class EvolutionWebhookIngestService {
       const base64 = qr && typeof qr['base64'] === 'string' ? (qr['base64'] as string) : null;
       const code = qr && typeof qr['code'] === 'string' ? (qr['code'] as string) : null;
       this.qrStore.set(payload.instance, base64 ?? code);
+    } else if (isCallWebhookEvent(payload.event) || isCallWebhookEvent(event)) {
+      await this.handleCall(tenantId, payload.instance, event, payload.data);
     }
 
     return { received: true };
+  }
+
+  private async handleCall(
+    tenantId: string,
+    instanceName: string,
+    event: string,
+    data: unknown,
+  ): Promise<void> {
+    const normalized = normalizeCallEvent(event, data);
+    if (!normalized) {
+      this.logger.warn({ instance: instanceName, event }, 'call webhook could not be normalized');
+      return;
+    }
+    const job: VoiceCallJob = {
+      kind: normalized.kind === 'terminate' ? 'terminate' : 'connect',
+      tenantId,
+      instanceName,
+      call: normalized,
+    };
+    await this.voiceCallsQueue.add(job.kind, job, {
+      jobId: `call-${instanceName}-${normalized.providerCallId}-${job.kind}`,
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 1000 },
+      removeOnComplete: { age: 3600, count: 2000 },
+      removeOnFail: false,
+    });
   }
 
   private async handleMessageUpsert(

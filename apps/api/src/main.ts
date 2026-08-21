@@ -6,11 +6,12 @@ import { AppModule } from './app.module';
 import type { Env } from './config/env';
 
 /**
- * One image, two roles (D-013):
- *   role=api    — HTTP server (REST /v1 + Meta webhooks)
+ * One image, three roles (D-013 / D-124):
+ *   role=api    — HTTP server (REST /v1 + webhooks)
  *   role=worker — BullMQ consumers (agents, OCR, reminders, outbox dispatcher)
- * Both boot the same AppModule so domain code never drifts; only the edge
- * differs. Worker consumers attach in Phases 6/7/9.
+ *   role=voice  — live WhatsApp Cloud Calling receptionist (WebRTC + tools)
+ * All boot the same AppModule so domain code never drifts; only the edge
+ * differs.
  */
 async function bootstrap(): Promise<void> {
   // rawBody: HMAC webhook verification needs the exact bytes Meta signed.
@@ -34,12 +35,12 @@ async function bootstrap(): Promise<void> {
   const role = config.get('API_ROLE', { infer: true });
   const logger = app.get(Logger);
 
-  if (role === 'worker') {
+  if (role === 'worker' || role === 'voice') {
     // No HTTP listener. Initialize modules so lifecycle hooks
     // (onModuleInit) register BullMQ workers; PrismaService's pg pool keeps
     // the event loop alive. Draining on SIGTERM via enableShutdownHooks.
     await app.init();
-    logger.log('worker role started — queue consumers attached');
+    logger.log(`${role} role started — queue consumers attached`);
     return;
   }
 

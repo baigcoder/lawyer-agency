@@ -4,10 +4,12 @@ import { z } from 'zod';
 import type { Env } from '../../../config/env';
 import { DomainError } from '../../../common/errors/domain-error';
 import type { AiCallOptions, AiCallResult, AiClient, LlmMessage } from '../application/ports';
+import { resolveChatCompletionsRuntime } from '../../../config/llm-runtime';
+import { extractJsonObject } from './json-content';
 
 interface OpenAiResponse {
   choices?: Array<{
-    message?: { content?: string | null };
+    message?: { content?: string | null; reasoning?: string | null };
   }>;
   usage?: { prompt_tokens: number; completion_tokens: number };
 }
@@ -28,10 +30,9 @@ export class OpenAiAdapter implements AiClient {
   constructor(private readonly config: ConfigService<Env, true>) {}
 
   async call<T>(options: AiCallOptions<z.ZodType>): Promise<AiCallResult<T>> {
-    const apiKey = this.config.get('OPENAI_API_KEY', { infer: true });
-    if (!apiKey) throw new AiProviderError(this.provider, 'OPENAI_API_KEY not configured');
-
-    const baseUrl = this.config.get('OPENAI_BASE_URL', { infer: true }).replace(/\/$/, '');
+    const runtime = resolveChatCompletionsRuntime(this.config);
+    if (!runtime) throw new AiProviderError(this.provider, 'GROQ_API_KEY or OPENAI_API_KEY not configured');
+    const { apiKey, baseUrl } = runtime;
     const model: string = options.model ?? this.config.get('AI_DEFAULT_MODEL', { infer: true });
     const started = Date.now();
     const maxAttempts = 4;
@@ -56,7 +57,8 @@ export class OpenAiAdapter implements AiClient {
       if (response.ok) {
         const latencyMs = Date.now() - started;
         const body = (await response.json()) as OpenAiResponse;
-        const content = body.choices?.[0]?.message?.content ?? '';
+        const content =
+          body.choices?.[0]?.message?.content ?? body.choices?.[0]?.message?.reasoning ?? '';
         const parsed = this.parseAndValidate(content, options.outputSchema);
 
         const tokensIn = body.usage?.prompt_tokens ?? estimateTokens(options.messages);
@@ -111,11 +113,7 @@ export class OpenAiAdapter implements AiClient {
   private parseAndValidate(content: string, schema: z.ZodType): unknown {
     let raw: unknown;
     try {
-      const stripped = content
-        .trim()
-        .replace(/^```(?:json)?\s*/i, '')
-        .replace(/\s*```$/i, '');
-      raw = JSON.parse(stripped || '{}');
+      raw = extractJsonObject(content);
     } catch {
       throw new AiProviderError(this.provider, 'response is not valid JSON');
     }

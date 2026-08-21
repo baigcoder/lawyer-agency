@@ -129,63 +129,166 @@ export function formatIntakeFields(fields: Record<string, unknown>): string {
 
 export function renderHandoffMessage(ctx: AiRunContext, language: Language): string {
   const vars = buildFirmPromptVariables(ctx);
+  const owner = spokenOwnerName(vars) ?? (language === 'UR' ? 'مالک' : 'my owner');
   const minutes = ctx.aiSettings.aiHandoffSlaMinutes;
   const responseTime =
     minutes > 0
       ? language === 'UR'
         ? `دفتری اوقات میں ${minutes} منٹ کے اندر`
         : `within ${minutes} minute${minutes === 1 ? '' : 's'} during office hours`
-      : language === 'UR'
-        ? 'جیسے ہی وکیل دستیاب ہو'
-        : 'as soon as a lawyer is available';
-  const template = ctx.aiSettings.aiHandoffMessage.trim() || defaultHandoffTemplate(language);
-  return renderTemplate(template, { ...vars, responseTime });
+      : '';
+  const template = ctx.aiSettings.aiHandoffMessage.trim() || defaultHandoffTemplate(language, minutes > 0);
+  return renderTemplate(template, { ...vars, ownerName: owner, responseTime }).trim();
 }
 
-function defaultHandoffTemplate(language: Language): string {
+function defaultHandoffTemplate(language: Language, hasSla: boolean): string {
   if (language === 'UR') {
-    return 'یہ معاملہ وکیل کی توجہ چاہتا ہے۔ میں نے آپ کا پیغام {{displayName}} کے وکیل کو بھیج دیا ہے؛ وہ {{responseTime}} جواب دیں گے۔';
+    return hasSla
+      ? 'ٹھیک ہے، یہ فوری معاملہ ہے۔ میں نے یہ {{ownerName}} کو بھیج دیا ہے، وہ {{responseTime}} آپ کو جواب دیں گے۔ فون پاس رکھیں۔'
+      : 'ٹھیک ہے، یہ فوری معاملہ ہے۔ میں نے یہ {{ownerName}} کو بھیج دیا ہے، وہ آپ کو جواب دیں گے۔ فون پاس رکھیں۔';
   }
-  return 'This needs a lawyer’s attention. I have forwarded your message to a lawyer at {{displayName}}; they will respond {{responseTime}}.';
+  return hasSla
+    ? "Got it, this is urgent. I've sent this to {{ownerName}}. They'll reply to you {{responseTime}}. Please keep your phone with you."
+    : "Got it, this is urgent. I've sent this to {{ownerName}}. They'll reply to you. Please keep your phone with you.";
 }
 
 export function renderGreetingMessage(ctx: AiRunContext, language: Language): string {
   const vars = buildFirmPromptVariables(ctx);
   if (language === 'UR') {
-    return renderTemplate('وعلیکم السلام! {{displayName}} میں مدد کے لیے حاضر ہوں — بتائیں آپ کو کیا چاہیے؟', vars);
+    return renderTemplate('وعلیکم السلام، بتائیں آپ کو کیا چاہیے؟', vars);
   }
-  return renderTemplate('Hello! How can {{displayName}} help you today?', vars);
+  return renderTemplate('Hello, how can I help you today?', vars);
 }
 
 export function renderFirstTurnDisclosure(
   ctx: AiRunContext,
   language: Language,
   responseText: string,
+  channel: 'text' | 'voice' = 'text',
 ): string {
   if (!ctx.isFirstClientTurn) return responseText;
   const vars = buildFirmPromptVariables(ctx);
-  const template =
-    ctx.aiSettings.aiConsentMessage.trim() ||
-    (language === 'UR'
-      ? 'میں {{displayName}} کا اے آئی اسسٹنٹ ہوں۔'
-      : "I'm the AI assistant for {{displayName}}.");
+  const custom = ctx.aiSettings.aiConsentMessage.trim();
+  const template = custom || (channel === 'voice' ? defaultSpokenDisclosure(language, vars) : defaultDisclosure(language, vars));
   const disclosure = renderTemplate(template, vars).trim();
-  if (!disclosure || responseText.trim().startsWith(disclosure)) return responseText;
-  return `${disclosure}\n\n${responseText.trim()}`;
+  const body = stripLeadingAiSelfIntros(responseText, disclosure);
+  if (!disclosure) return body;
+  if (!body) return disclosure;
+  if (alreadyHasDisclosure(body, disclosure)) return body;
+  return channel === 'voice' ? `${disclosure} ${body}` : `${disclosure}\n\n${body}`;
+}
+
+export function spokenOwnerName(vars: Record<string, string>): string | null {
+  const owner = vars.ownerName?.trim() ?? '';
+  if (!owner || /^not provided$/i.test(owner)) return null;
+  return owner;
+}
+
+export function defaultSpokenDisclosure(language: Language, vars: Record<string, string>): string {
+  const owner = spokenOwnerName(vars);
+  const firm = vars.displayName?.trim() || 'the firm';
+  if (language === 'UR') {
+    return owner
+      ? `میں ${owner} کا اسسٹنٹ ہوں، وکیل خود نہیں۔`
+      : `میں ${firm} کا اسسٹنٹ ہوں، وکیل نہیں۔`;
+  }
+  return owner
+    ? `I'm ${owner}'s assistant, not ${owner} the lawyer.`
+    : `I'm the assistant for ${firm}, not a lawyer.`;
+}
+
+export function defaultDisclosure(language: Language, vars: Record<string, string>): string {
+  const owner = spokenOwnerName(vars);
+  const firm = vars.displayName?.trim() || 'the firm';
+  if (language === 'UR') {
+    if (owner) {
+      return `میں ${owner} کا اسسٹنٹ ہوں، وکیل خود نہیں۔ آپ کے میسج اور وائس نوٹ کا جواب میں دوں گا۔ بتائیں آپ کو کیا چاہیے؟`;
+    }
+    return `میں ${firm} کا اسسٹنٹ ہوں، وکیل نہیں۔ آپ کے میسج اور وائس نوٹ کا جواب میں دوں گا۔ بتائیں آپ کو کیا چاہیے؟`;
+  }
+  if (owner) {
+    return `I'm ${owner}'s assistant, not ${owner} the lawyer. I'll answer your messages and voice notes. Tell me how I can help.`;
+  }
+  return `I'm the assistant for ${firm}, not a lawyer. I'll answer your messages and voice notes. Tell me how I can help.`;
 }
 
 export function renderOffTopicRedirect(ctx: AiRunContext, language: Language): string {
   const vars = buildFirmPromptVariables(ctx);
   if (language === 'UR') {
     return renderTemplate(
-      'میں {{displayName}} کا اے آئی اسسٹنٹ ہوں۔ میں صرف اس فرم کے قانونی انٹیک، اپائنٹمنٹ، دستاویزات یا کیس کے سوالات کا جواب دے سکتا/سکتی ہوں — عام گپ شپ یا ذاتی بات نہیں۔ براہ کرم بتائیں آپ کو کس قانونی معاملے میں مدد چاہیے۔',
+      'میں صرف اس فرم کے قانونی انٹیک، اپائنٹمنٹ، دستاویزات یا کیس کے سوالات کا جواب دے سکتا ہوں، عام گپ شپ یا ذاتی بات نہیں۔ براہ کرم بتائیں آپ کو کس قانونی معاملے میں مدد چاہیے۔',
       vars,
     );
   }
   return renderTemplate(
-    "I'm the AI assistant for {{displayName}}. I can only help with this firm's legal intake, appointments, documents, or case questions — not casual chat. How can we help with a legal matter?",
+    "I can only help with this firm's legal intake, appointments, documents, or case questions, not casual chat. How can we help with a legal matter?",
     vars,
   );
+}
+
+const EN_ASSISTANT_PREFIX =
+  /^(?:(?:hi|hy|hello|hey|assalamu?alaikum)[,!.]?\s+)?(?:i(?:['’]?m|\s+am)|this\s+is)\s+(?:the\s+)?(?:an?\s+)?(?:ai\s+)?(?:[^.\n]{0,80}?'s\s+)?assistant(?:\s+for\s+[^\n.!?]{0,80})?(?:\s*[,—–-]\s*not[^\n.!?]{0,90})?[.!?۔]?\s*/i;
+const EN_ASSISTANT_FOLLOWUP =
+  /^(?:i(?:['’]?ll| will) answer your messages(?: and voice notes)?[.!]?\s*)/i;
+const EN_HELP_FOLLOWUP =
+  /^(?:i(?:['’]?m|\s+am) here to help[.!—–,]*\s*|tell me how i can help(?: you)?[.!]\s*)/i;
+const UR_ASSISTANT_PREFIX =
+  /^میں[^\n۔.]{0,80}(?:اے\s*آئی\s*)?اسسٹنٹ\s*ہوں(?:[،,]?\s*وکیل[^\n۔.]{0,60})?[۔.]?\s*/;
+const UR_ASSISTANT_FOLLOWUP =
+  /^(?:آپ کے میسج اور وائس نوٹ کا جواب میں دوں گا[۔.]?\s*)?(?:بتائیں آپ کو کیا چاہیے[؟?]?\s*)?/u;
+
+/** Drop a leading "I am the AI assistant…" so first-turn disclosure is prepended once. */
+export function stripLeadingAiSelfIntros(text: string, disclosure = ''): string {
+  let remaining = text.trim();
+  for (let i = 0; i < 4; i++) {
+    if (!remaining) break;
+    const stripped = remaining
+      .replace(EN_ASSISTANT_PREFIX, '')
+      .replace(EN_ASSISTANT_FOLLOWUP, '')
+      .replace(EN_HELP_FOLLOWUP, '')
+      .replace(UR_ASSISTANT_PREFIX, '')
+      .replace(UR_ASSISTANT_FOLLOWUP, '')
+      .trim();
+    if (stripped !== remaining) {
+      remaining = stripped.replace(/^[-—–]+\s*/, '');
+      continue;
+    }
+    const { first, rest } = splitLeadBubble(remaining);
+    if (disclosure && rest.trim() && alreadyHasDisclosure(first, disclosure)) {
+      remaining = rest.trim();
+      continue;
+    }
+    break;
+  }
+  return remaining;
+}
+
+function alreadyHasDisclosure(text: string, disclosure: string): boolean {
+  const needle = normalizeDisclosure(disclosure);
+  if (!needle) return false;
+  return normalizeDisclosure(text).startsWith(needle);
+}
+
+function splitLeadBubble(text: string): { first: string; rest: string } {
+  const para = text.indexOf('\n\n');
+  if (para > 0 && para <= 280) {
+    return { first: text.slice(0, para).trim(), rest: text.slice(para + 2) };
+  }
+  const match = text.match(/^([\s\S]{1,280}?[.!?۔])(?:\s+|$)/);
+  if (match?.[1]) {
+    return { first: match[1].trim(), rest: text.slice(match[0].length) };
+  }
+  return { first: text, rest: '' };
+}
+
+function normalizeDisclosure(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/\bi am\b/g, 'im')
+    .replace(/[^a-z0-9\u0600-\u06ff]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 export function formatRetrievedContext(chunks: AiRunContext['retrievedChunks']): string {

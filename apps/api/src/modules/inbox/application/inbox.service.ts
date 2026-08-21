@@ -19,6 +19,7 @@ export interface InboxPendingPayment {
   description: string | null;
   proofMessageId: string | null;
   proofDocumentId: string | null;
+  appointmentId: string | null;
 }
 
 export interface InboxConversationSummary {
@@ -50,6 +51,11 @@ export interface InboxMessage {
   documentId: string | null;
   pendingApproval: boolean;
   createdAt: Date;
+  call?: {
+    durationSeconds: number;
+    disposition: string;
+    summary: string;
+  };
 }
 
 export interface InboxFilters {
@@ -331,6 +337,17 @@ export class InboxService {
       documentId: hasDocument ? (payload['documentId'] as string) : null,
       pendingApproval: payload['pendingApproval'] === true,
       createdAt: m.createdAt,
+      ...(m.contentType === 'CALL'
+        ? {
+            call: {
+              durationSeconds:
+                typeof payload['durationSeconds'] === 'number' ? payload['durationSeconds'] : 0,
+              disposition: typeof payload['disposition'] === 'string' ? payload['disposition'] : 'INFO',
+              summary:
+                (typeof payload['summary'] === 'string' ? payload['summary'] : m.body) ?? 'WhatsApp call',
+            },
+          }
+        : {}),
     };
   }
 
@@ -586,6 +603,7 @@ function mapPendingPayment(row: {
     description: row.description,
     proofMessageId: typeof meta['proofMessageId'] === 'string' ? meta['proofMessageId'] : null,
     proofDocumentId: typeof meta['proofDocumentId'] === 'string' ? meta['proofDocumentId'] : null,
+    appointmentId: typeof meta['appointmentId'] === 'string' ? meta['appointmentId'] : null,
   };
 }
 

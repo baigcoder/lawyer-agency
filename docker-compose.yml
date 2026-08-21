@@ -86,6 +86,7 @@ services:
       EVOLUTION_SERVER_URL: http://api:3001
       # Shared with worker so inbox can stream voice notes the worker stored.
       MEDIA_STORAGE_PATH: /var/lib/wakeel/media
+      OBJECT_STORAGE_DRIVER: filesystem
     ports:
       - "3001:3001"
     volumes:
@@ -123,6 +124,47 @@ services:
       EVOLUTION_API_BASE_URL: http://evolution-api:8080
       EVOLUTION_SERVER_URL: http://api:3001
       MEDIA_STORAGE_PATH: /var/lib/wakeel/media
+      OBJECT_STORAGE_DRIVER: filesystem
+    volumes:
+      - wakeel_media:/var/lib/wakeel/media
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      evolution-api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  voice:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: runner
+    # Publish SIP/RTP on the real host. Do NOT use network_mode:host with
+    # Docker Desktop — "host" is the Desktop VM (192.168.65.x), so Wavoip
+    # INVITEs to the LAN/public IP never reach this process.
+    ports:
+      - "5060:5060/tcp"
+      - "5060:5060/udp"
+      - "40000-40031:40000-40031/udp"
+    env_file:
+      - apps/api/.env
+    environment:
+      NODE_ENV: development
+      API_ROLE: voice
+      DATABASE_URL: postgresql://app_user:change-me@postgres:5432/lawyer_agency
+      REDIS_URL: redis://redis:6379
+      EVOLUTION_API_BASE_URL: http://evolution-api:8080
+      EVOLUTION_SERVER_URL: http://api:3001
+      MEDIA_STORAGE_PATH: /var/lib/wakeel/media
+      OBJECT_STORAGE_DRIVER: filesystem
+      WEBRTC_ICE_PORT_MIN: "40000"
+      WEBRTC_ICE_PORT_MAX: "40031"
     volumes:
       - wakeel_media:/var/lib/wakeel/media
     depends_on:
@@ -196,10 +238,15 @@ services:
       LOG_LEVEL: info
       TELEMETRY_ENABLED: "false"
       NODE_OPTIONS: --dns-result-order=ipv4first
-      CONFIG_SESSION_PHONE_CLIENT: Wakeel
-      CONFIG_SESSION_PHONE_NAME: Chrome
+      # Wavoip live calls need a Windows/UWP (desktop) fingerprint — Chrome
+      # browser identity cannot carry WhatsApp call media (voice-calls-baileys).
+      CONFIG_SESSION_PHONE_CLIENT: Windows
+      CONFIG_SESSION_PHONE_NAME: UWP
     ports:
       - "8080:8080"
+    volumes:
+      - ./infra/evolution:/wavoip-patch:ro
+    entrypoint: ["/bin/bash", "/wavoip-patch/entrypoint-wavoip.sh"]
     depends_on:
       evolution-postgres:
         condition: service_healthy

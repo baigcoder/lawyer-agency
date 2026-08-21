@@ -20,6 +20,9 @@ export function fastRoute(params: {
 }): FastRouteDecision | null {
   const text = params.clientText.trim();
   if (!text) return { intent: 'GREETING', reasoning: 'empty message', confidence: 0.99 };
+  if (isUnusableVoiceTranscript(text)) {
+    return { intent: 'GREETING', reasoning: 'voice note without a transcript', confidence: 0.99 };
+  }
 
   if (isCasualOffTopic(text)) {
     return { intent: 'OFF_TOPIC', reasoning: 'casual/flirty small talk', confidence: 0.95 };
@@ -49,6 +52,15 @@ export function fastRoute(params: {
     return { intent: 'INTAKE', reasoning: 'continuing intake answers', confidence: 0.87 };
   }
   return null;
+}
+
+export function isUnusableVoiceTranscript(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  return (
+    normalized.startsWith('(voice note') ||
+    normalized === '(voice note — transcription unavailable)' ||
+    normalized === '(voice note — no transcript)'
+  );
 }
 
 export function needsRetrieval(intent: AgentIntent): boolean {

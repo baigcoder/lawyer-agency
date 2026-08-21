@@ -10,8 +10,7 @@ export const paymentDetailsSchema = z.object({
 });
 
 export type PaymentDetailsInput = z.infer<typeof paymentDetailsSchema>;
-
-export interface PaymentDetails extends PaymentDetailsInput {}
+export type PaymentDetails = PaymentDetailsInput;
 
 export const emptyPaymentDetails = (): PaymentDetails => ({
   jazzcashNumber: '',

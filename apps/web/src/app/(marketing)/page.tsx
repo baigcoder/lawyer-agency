@@ -52,11 +52,12 @@ function Header() {
             variant="ghost"
             size="sm"
             className="hidden sm:inline-flex"
+            nativeButton={false}
             render={<Link href="/sign-in" />}
           >
             {t('signIn')}
           </Button>
-          <Button size="sm" render={<Link href="/sign-up" />}>
+          <Button size="sm" nativeButton={false} render={<Link href="/sign-up" />}>
             {t('startPilot')}
           </Button>
         </div>
@@ -155,7 +156,12 @@ export default function Home() {
                 {t('heroSubtitle')}
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <Button size="lg" className="h-12 px-6" render={<Link href="/sign-up" />}>
+                <Button
+                  size="lg"
+                  className="h-12 px-6"
+                  nativeButton={false}
+                  render={<Link href="/sign-up" />}
+                >
                   {t('startPilot')}
                   <ArrowRight className="ms-2 h-4 w-4" aria-hidden />
                 </Button>
@@ -163,6 +169,7 @@ export default function Home() {
                   variant="outline"
                   size="lg"
                   className="h-12 px-6"
+                  nativeButton={false}
                   render={<Link href="/demo" />}
                 >
                   {t('viewDemo')}
@@ -298,7 +305,12 @@ export default function Home() {
               <p className="mt-3 text-primary-foreground/80">{t('ctaDesc')}</p>
             </div>
             <div className="flex shrink-0 flex-col gap-3 sm:flex-row">
-              <Button size="lg" variant="secondary" render={<Link href="/sign-up" />}>
+              <Button
+                size="lg"
+                variant="secondary"
+                nativeButton={false}
+                render={<Link href="/sign-up" />}
+              >
                 {t('startPilot')}
                 <ArrowRight className="ms-2 h-4 w-4" aria-hidden />
               </Button>
@@ -306,6 +318,7 @@ export default function Home() {
                 size="lg"
                 variant="outline"
                 className="border-primary-foreground/30 bg-transparent text-primary-foreground hover:bg-primary-foreground/10"
+                nativeButton={false}
                 render={<Link href="/demo" />}
               >
                 {t('viewDemo')}

@@ -66,7 +66,13 @@ export class AiModule {
         AiOrchestratorService,
         AiEventHandler,
       ],
-      exports: [AiOrchestratorService, AiEventHandler],
+      exports: [
+        AiOrchestratorService,
+        AiEventHandler,
+        EscalationDetectorService,
+        EscalationAssignmentService,
+        AiLlmModule,
+      ],
     };
   }
 }

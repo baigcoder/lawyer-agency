@@ -67,6 +67,12 @@ services:
       META_GRAPH_BASE_URL: ${META_GRAPH_BASE_URL:-https://graph.facebook.com/v22.0}
       META_REDIRECT_URI: ${META_REDIRECT_URI}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_BASE_URL: ${GROQ_BASE_URL:-https://api.groq.com/openai/v1}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      ELEVENLABS_VOICE_ID_MALE: ${ELEVENLABS_VOICE_ID_MALE:-}
+      ELEVENLABS_VOICE_ID_FEMALE: ${ELEVENLABS_VOICE_ID_FEMALE:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
@@ -80,6 +86,7 @@ services:
       SENTRY_DSN: ${SENTRY_DSN}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
       MEDIA_STORAGE_PATH: ${MEDIA_STORAGE_PATH:-/var/lib/wakeel/media}
+      WAVOIP_TOKEN: ${WAVOIP_TOKEN:-}
     volumes:
       - wakeel_media:/var/lib/wakeel/media
     depends_on:
@@ -114,6 +121,12 @@ services:
       META_WEBHOOK_VERIFY_TOKEN: ${META_WEBHOOK_VERIFY_TOKEN}
       META_GRAPH_BASE_URL: ${META_GRAPH_BASE_URL:-https://graph.facebook.com/v22.0}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_BASE_URL: ${GROQ_BASE_URL:-https://api.groq.com/openai/v1}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      ELEVENLABS_VOICE_ID_MALE: ${ELEVENLABS_VOICE_ID_MALE:-}
+      ELEVENLABS_VOICE_ID_FEMALE: ${ELEVENLABS_VOICE_ID_FEMALE:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
@@ -127,6 +140,54 @@ services:
       SENTRY_DSN: ${SENTRY_DSN}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
       MEDIA_STORAGE_PATH: ${MEDIA_STORAGE_PATH:-/var/lib/wakeel/media}
+    volumes:
+      - wakeel_media:/var/lib/wakeel/media
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  voice:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_ROLE: voice
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL}
+      META_GRAPH_BASE_URL: ${META_GRAPH_BASE_URL:-https://graph.facebook.com/v22.0}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_BASE_URL: ${GROQ_BASE_URL:-https://api.groq.com/openai/v1}
+      EVOLUTION_API_BASE_URL: ${EVOLUTION_API_BASE_URL}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
+      EVOLUTION_SERVER_URL: ${EVOLUTION_SERVER_URL}
+      EVOLUTION_WEBHOOK_SECRET: ${EVOLUTION_WEBHOOK_SECRET}
+      MEDIA_STORAGE_PATH: ${MEDIA_STORAGE_PATH:-/var/lib/wakeel/media}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      WEBRTC_ICE_PORT_MIN: ${WEBRTC_ICE_PORT_MIN:-40000}
+      WEBRTC_ICE_PORT_MAX: ${WEBRTC_ICE_PORT_MAX:-40031}
+      WEBRTC_TURN_URL: ${WEBRTC_TURN_URL:-}
+      WEBRTC_TURN_USERNAME: ${WEBRTC_TURN_USERNAME:-}
+      WEBRTC_TURN_CREDENTIAL: ${WEBRTC_TURN_CREDENTIAL:-}
+      WAVOIP_TOKEN: ${WAVOIP_TOKEN:-}
+      WAVOIP_SIP_HOST: ${WAVOIP_SIP_HOST:-sipv2.wavoip.com}
+      WAVOIP_SIP_PORT: ${WAVOIP_SIP_PORT:-5060}
+      WAVOIP_SIP_USER: ${WAVOIP_SIP_USER:-}
+      WAVOIP_SIP_PASSWORD: ${WAVOIP_SIP_PASSWORD:-}
+      WAVOIP_SIP_CONTACT_HOST: ${WAVOIP_SIP_CONTACT_HOST:-}
+    ports:
+      - "5060:5060/udp"
+      - "40000-40031:40000-40031/udp"
     volumes:
       - wakeel_media:/var/lib/wakeel/media
     depends_on:

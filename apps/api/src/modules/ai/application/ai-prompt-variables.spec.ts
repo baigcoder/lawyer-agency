@@ -65,13 +65,51 @@ describe('ai-prompt-variables', () => {
 
     const unconfigured = renderHandoffMessage(sampleContext(), 'EN');
     expect(unconfigured).not.toMatch(/\b\d+\s+minute/);
-    expect(unconfigured).toContain('as soon as a lawyer is available');
+    expect(unconfigured).toContain("I've sent this to my owner");
+    expect(unconfigured).toContain("They'll reply to you");
+
+    const withOwner = sampleContext({
+      ownerProfile: {
+        ownerName: 'Talha',
+        bio: '',
+        bioUr: '',
+        yearsExperience: null,
+        barCouncil: '',
+        barEnrollmentNumber: '',
+        education: [],
+        achievements: [],
+        languages: [],
+        practiceAreas: [],
+        featuredCases: [],
+      },
+    });
+    expect(renderHandoffMessage(withOwner, 'EN')).toContain("I've sent this to Talha");
   });
 
   it('adds a concise configurable AI disclosure only on the first turn', () => {
     const firstTurn = sampleContext({ isFirstClientTurn: true });
     expect(renderFirstTurnDisclosure(firstTurn, 'EN', 'How can I help?')).toBe(
-      "I'm the AI assistant for ABC Law Associates.\n\nHow can I help?",
+      "I'm the assistant for ABC Law Associates, not a lawyer. I'll answer your messages and voice notes. Tell me how I can help.\n\nHow can I help?",
+    );
+
+    const withOwner = sampleContext({
+      isFirstClientTurn: true,
+      ownerProfile: {
+        ownerName: 'Talha',
+        bio: '',
+        bioUr: '',
+        yearsExperience: null,
+        barCouncil: '',
+        barEnrollmentNumber: '',
+        education: [],
+        achievements: [],
+        languages: [],
+        practiceAreas: [],
+        featuredCases: [],
+      },
+    });
+    expect(renderFirstTurnDisclosure(withOwner, 'EN', 'What happened?')).toContain(
+      "I'm Talha's assistant, not Talha the lawyer.",
     );
 
     const custom = sampleContext({
@@ -87,6 +125,30 @@ describe('ai-prompt-variables', () => {
     expect(renderFirstTurnDisclosure(sampleContext(), 'EN', 'Welcome back.')).toBe(
       'Welcome back.',
     );
+
+    const spoken = renderFirstTurnDisclosure(withOwner, 'EN', 'I heard your question about the house.', 'voice');
+    expect(spoken.startsWith("I'm Talha's assistant, not Talha the lawyer.")).toBe(true);
+    expect(spoken).toContain('I heard your question about the house.');
+    expect(spoken).not.toContain('\n\n');
+  });
+
+  it('does not repeat an AI-assistant intro the model already wrote', () => {
+    const firstTurn = sampleContext({ isFirstClientTurn: true });
+    const disclosure =
+      "I'm the assistant for ABC Law Associates, not a lawyer. I'll answer your messages and voice notes. Tell me how I can help.";
+    expect(
+      renderFirstTurnDisclosure(firstTurn, 'EN', "I'm the AI assistant for ABC Law Associates. How can I help?"),
+    ).toBe(`${disclosure}\n\nHow can I help?`);
+    expect(renderFirstTurnDisclosure(firstTurn, 'EN', 'I am an assistant. Hello — how can I help?')).toBe(
+      `${disclosure}\n\nHello — how can I help?`,
+    );
+    expect(
+      renderFirstTurnDisclosure(
+        firstTurn,
+        'EN',
+        "I'm Talha's assistant, not Talha the lawyer. I'll answer your messages and voice notes. What happened?",
+      ),
+    ).toBe(`${disclosure}\n\nWhat happened?`);
   });
 
   it('includes owner profile variables when configured', () => {

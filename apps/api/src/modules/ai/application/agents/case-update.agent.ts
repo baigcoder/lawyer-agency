@@ -71,7 +71,7 @@ export class CaseUpdateAgent {
       model: choice.model,
       promptVersionId: prompt.id,
       correlationId: params.correlationId,
-      temperature: 0.2,
+      temperature: 0.45,
       maxTokens: 500,
       timeoutMs: 20_000,
     });

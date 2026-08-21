@@ -100,4 +100,14 @@ describe('EscalationDetectorService', () => {
     });
     expect(result).toMatchObject({ triggerType: 'ACTIVE_ARREST' });
   });
+
+  it('treats a brother’s arrest or a killing as an urgent handoff', async () => {
+    const { service } = makeService();
+    await expect(
+      service.detect({ tenantId: 't1', tenantAllowlist: [], clientText: 'my brother arrested please help' }),
+    ).resolves.toMatchObject({ triggerType: 'ACTIVE_ARREST' });
+    await expect(
+      service.detect({ tenantId: 't1', tenantAllowlist: [], clientText: 'my brother killed someone' }),
+    ).resolves.toMatchObject({ triggerType: 'ACTIVE_ARREST' });
+  });
 });

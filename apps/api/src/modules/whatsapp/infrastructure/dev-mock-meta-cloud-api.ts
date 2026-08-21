@@ -32,4 +32,15 @@ export class DevMockMetaCloudApi implements MetaCloudApi {
       filename: 'mock-file',
     };
   }
+
+  async postCall(params: {
+    accessToken: string;
+    phoneNumberId: string;
+    body: Record<string, unknown>;
+  }): Promise<void> {
+    this.logger.log(
+      { phoneNumberId: params.phoneNumberId, action: params.body['action'] },
+      'DEV MOCK: postCall (no real WhatsApp call action)',
+    );
+  }
 }

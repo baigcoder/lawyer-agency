@@ -1,12 +1,7 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { UnitOfWork } from '../../../common/prisma/unit-of-work';
 import type { DbTx } from '../../../common/persistence/db-tx';
-import {
-  OUTBOUND_SENDER,
-  WHATSAPP_CONNECTION_REPOSITORY,
-  type OutboundSender,
-  type WhatsappConnectionRepository,
-} from '../../whatsapp/application/ports';
+import { OUTBOUND_SENDER, type OutboundSender } from '../../whatsapp/application/ports';
 import type { AppointmentSummary } from './appointments.service';
 
 /**
@@ -25,21 +20,20 @@ export class AppointmentNotificationsService {
   constructor(
     private readonly uow: UnitOfWork,
     @Inject(OUTBOUND_SENDER) private readonly sender: OutboundSender,
-    @Inject(WHATSAPP_CONNECTION_REPOSITORY) private readonly connections: WhatsappConnectionRepository,
   ) {}
 
   async sendConfirmation(tenantId: string, appointment: AppointmentSummary): Promise<boolean> {
-    const text = this.confirmationText(appointment);
+    const text = buildAppointmentConfirmationText(appointment);
     return this.sendClientMessage(tenantId, appointment.clientId, appointment.clientWaPhone, text);
   }
 
   async sendCancellation(tenantId: string, appointment: AppointmentSummary): Promise<boolean> {
-    const text = `Your appointment with ${appointment.lawyerName} on ${this.formatDateTime(appointment.startsAt)} has been cancelled. Reply here to reschedule.`;
+    const text = `Your appointment with ${appointment.lawyerName} on ${formatAppointmentDateTime(appointment.startsAt)} has been cancelled. Reply here to reschedule.`;
     return this.sendClientMessage(tenantId, appointment.clientId, appointment.clientWaPhone, text);
   }
 
   async sendUpdate(tenantId: string, appointment: AppointmentSummary): Promise<boolean> {
-    const text = `Your appointment with ${appointment.lawyerName} has been updated to ${this.formatDateTime(appointment.startsAt)}. Location: ${appointment.location ?? 'TBD'}. Reply here for help.`;
+    const text = `Your appointment with ${appointment.lawyerName} has been updated to ${formatAppointmentDateTime(appointment.startsAt)}. Location: ${appointment.location ?? 'TBD'}. Reply here for help.`;
     return this.sendClientMessage(tenantId, appointment.clientId, appointment.clientWaPhone, text);
   }
 
@@ -82,19 +76,32 @@ export class AppointmentNotificationsService {
       return true;
     });
   }
+}
 
-  private confirmationText(appointment: AppointmentSummary): string {
-    return `Appointment confirmed with ${appointment.lawyerName} on ${this.formatDateTime(appointment.startsAt)}. Location: ${appointment.location ?? 'TBD'}. Reply here if you need to reschedule.`;
-  }
+export function buildAppointmentConfirmationText(appointment: Pick<
+  AppointmentSummary,
+  'lawyerName' | 'startsAt' | 'location'
+>): string {
+  return `Appointment confirmed with ${appointment.lawyerName} on ${formatAppointmentDateTime(appointment.startsAt)}. Location: ${appointment.location ?? 'TBD'}. Reply here if you need to reschedule.`;
+}
 
-  private formatDateTime(date: Date): string {
-    return new Intl.DateTimeFormat('en-GB', {
-      weekday: 'short',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(new Date(date));
-  }
+/** Client-facing times in Asia/Karachi so WhatsApp and calendar agree. */
+export function formatAppointmentDateTime(date: Date): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Karachi',
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(date));
+}
+
+export function formatAppointmentTimeOnly(date: Date): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Karachi',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(date));
 }

@@ -54,6 +54,42 @@ describe('AuthGuard', () => {
     );
   });
 
+  it('development clerk mode falls back to x-tenant-id without a Bearer token', async () => {
+    const verifier = { verify: vi.fn() };
+    const guard = new AuthGuard(
+      mockConfig({ CLERK_SECRET_KEY: 'sk_test_example', NODE_ENV: 'development' }),
+      undefined as unknown as AuthService,
+      verifier as unknown as symbol,
+    );
+
+    await RequestContextStore.run({ correlationId: 'c1' }, async () => {
+      const result = await guard.canActivate(
+        mockContext({ headers: { 'x-tenant-id': '11111111-1111-1111-1111-111111111111' } }),
+      );
+      expect(result).toBe(true);
+      expect(verifier.verify).not.toHaveBeenCalled();
+      expect(RequestContextStore.tenantId()).toBe('11111111-1111-1111-1111-111111111111');
+    });
+  });
+
+  it('production clerk mode rejects missing Authorization even with x-tenant-id', async () => {
+    const guard = new AuthGuard(
+      mockConfig({ CLERK_SECRET_KEY: 'sk_test_example', NODE_ENV: 'production' }),
+      undefined as unknown as AuthService,
+      undefined as unknown as symbol,
+    );
+
+    await expect(
+      guard.canActivate(
+        mockContext({
+          headers: {
+            'x-tenant-id': '11111111-1111-1111-1111-111111111111',
+          },
+        }),
+      ),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
   it('clerk mode verifies token and resolves principal', async () => {
     const verifier = {
       verify: vi.fn(async () => ({

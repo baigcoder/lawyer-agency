@@ -1,6 +1,6 @@
 #syntax=docker/dockerfile:1
 
-# Backend image — one image, two roles (api|worker) per D-013.
+# Backend image — one image, three roles (api|worker|voice) per D-013 / D-124.
 # Build context must be the repo root so the lockfile and workspace structure
 # are available.
 
@@ -36,7 +36,7 @@ CMD ["sh", "/app/infra/scripts/migrate.sh"]
 FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
-RUN apk add --no-cache dumb-init
+RUN apk add --no-cache dumb-init espeak-ng ffmpeg
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
@@ -46,7 +46,8 @@ COPY --from=builder /app/apps/api/src/generated ./apps/api/dist/generated
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
 COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
 
-# Role is selected at runtime via API_ROLE (api|worker).
+# Role is selected at runtime via API_ROLE (api|worker|voice).
 WORKDIR /app/apps/api
 EXPOSE 3001
+EXPOSE 5060/udp
 CMD ["dumb-init", "node", "dist/main.js"]

@@ -5,6 +5,7 @@ export const aiVoiceGenderSchema = z.enum(['male', 'female']);
 export const aiVoiceReplyModeSchema = z.enum(['voice_only', 'text_only', 'auto']);
 export const aiLanguagePolicySchema = z.enum(['mirror', 'english_only', 'urdu_preferred']);
 export const aiReplyLengthSchema = z.enum(['short', 'balanced', 'detailed']);
+export const callsTakenBySchema = z.enum(['off', 'ai']);
 
 export const aiSettingsSchema = z.object({
   aiAutoReplyEnabled: z.boolean(),
@@ -26,6 +27,10 @@ export const aiSettingsSchema = z.object({
   aiVoiceGender: aiVoiceGenderSchema,
   aiVoiceReplyMode: aiVoiceReplyModeSchema,
   aiVoiceId: z.string().max(80),
+  callsTakenBy: callsTakenBySchema,
+  aiCallHoursStart: z.string().max(5),
+  aiCallHoursEnd: z.string().max(5),
+  aiCallHoursTimezone: z.string().max(64),
 });
 
 export type AiSettings = z.infer<typeof aiSettingsSchema>;
@@ -61,6 +66,10 @@ export function defaultAiSettings(): AiSettings {
     aiVoiceGender: 'female',
     aiVoiceReplyMode: 'auto',
     aiVoiceId: '',
+    callsTakenBy: 'ai',
+    aiCallHoursStart: '',
+    aiCallHoursEnd: '',
+    aiCallHoursTimezone: 'Asia/Karachi',
   };
 }
 
@@ -71,6 +80,7 @@ export function parseAiSettings(raw: Record<string, unknown>): AiSettings {
   const voiceReplyMode = raw['aiVoiceReplyMode'];
   const languagePolicy = raw['aiLanguagePolicy'];
   const replyLength = raw['aiReplyLength'];
+  const callsTakenBy = raw['callsTakenBy'];
   return {
     aiAutoReplyEnabled:
       typeof raw['aiAutoReplyEnabled'] === 'boolean' ? raw['aiAutoReplyEnabled'] : defaults.aiAutoReplyEnabled,
@@ -123,6 +133,15 @@ export function parseAiSettings(raw: Record<string, unknown>): AiSettings {
       ? (voiceReplyMode as AiSettings['aiVoiceReplyMode'])
       : defaults.aiVoiceReplyMode,
     aiVoiceId: typeof raw['aiVoiceId'] === 'string' ? raw['aiVoiceId'].trim().slice(0, 80) : '',
+    callsTakenBy: callsTakenBySchema.safeParse(callsTakenBy).success
+      ? (callsTakenBy as AiSettings['callsTakenBy'])
+      : defaults.callsTakenBy,
+    aiCallHoursStart: parseHourMinute(raw['aiCallHoursStart'], defaults.aiCallHoursStart),
+    aiCallHoursEnd: parseHourMinute(raw['aiCallHoursEnd'], defaults.aiCallHoursEnd),
+    aiCallHoursTimezone:
+      typeof raw['aiCallHoursTimezone'] === 'string' && raw['aiCallHoursTimezone'].trim().length > 0
+        ? raw['aiCallHoursTimezone'].trim().slice(0, 64)
+        : defaults.aiCallHoursTimezone,
   };
 }
 
@@ -147,6 +166,10 @@ export function persistAiSettings(parsed: AiSettings): Record<string, unknown> {
     aiVoiceGender: parsed.aiVoiceGender,
     aiVoiceReplyMode: parsed.aiVoiceReplyMode,
     aiVoiceId: parsed.aiVoiceId,
+    callsTakenBy: parsed.callsTakenBy,
+    aiCallHoursStart: parsed.aiCallHoursStart,
+    aiCallHoursEnd: parsed.aiCallHoursEnd,
+    aiCallHoursTimezone: parsed.aiCallHoursTimezone,
   };
 }
 
@@ -183,6 +206,13 @@ export function buildAiAssumptionsBlock(settings: AiSettings): string {
     languagePolicyInstruction(settings),
   ];
   return lines.join('\n');
+}
+
+function parseHourMinute(value: unknown, fallback: string): string {
+  if (typeof value !== 'string') return fallback;
+  const trimmed = value.trim();
+  if (trimmed === '') return '';
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(trimmed) ? trimmed : fallback;
 }
 
 function replyLengthInstruction(length: AiSettings['aiReplyLength']): string {

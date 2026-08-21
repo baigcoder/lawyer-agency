@@ -5,6 +5,7 @@ export const aiVoiceGenderSchema = z.enum(['male', 'female']);
 export const aiVoiceReplyModeSchema = z.enum(['voice_only', 'text_only', 'auto']);
 export const aiLanguagePolicySchema = z.enum(['mirror', 'english_only', 'urdu_preferred']);
 export const aiReplyLengthSchema = z.enum(['short', 'balanced', 'detailed']);
+export const callsTakenBySchema = z.enum(['off', 'ai']);
 
 export const aiSettingsSchema = z.object({
   aiAutoReplyEnabled: z.boolean(),
@@ -26,6 +27,10 @@ export const aiSettingsSchema = z.object({
   aiVoiceGender: aiVoiceGenderSchema,
   aiVoiceReplyMode: aiVoiceReplyModeSchema,
   aiVoiceId: z.string().max(80),
+  callsTakenBy: callsTakenBySchema,
+  aiCallHoursStart: z.string().max(5),
+  aiCallHoursEnd: z.string().max(5),
+  aiCallHoursTimezone: z.string().max(64),
 });
 
 export type AiSettings = z.infer<typeof aiSettingsSchema>;

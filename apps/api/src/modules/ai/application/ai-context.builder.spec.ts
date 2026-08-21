@@ -41,8 +41,22 @@ describe('AiContextBuilder', () => {
       },
       message: {
         findMany: vi.fn(async () => [
-          { direction: 'INBOUND', senderType: 'CLIENT', body: 'Hello', contentType: 'TEXT', createdAt: new Date() },
+          {
+            direction: 'OUTBOUND',
+            senderType: 'AI',
+            body: 'جی، بتائیں کیا ہوا؟',
+            contentType: 'AUDIO',
+            createdAt: new Date(),
+          },
+          {
+            direction: 'INBOUND',
+            senderType: 'CLIENT',
+            body: 'مجھے طلاق کے کیس میں مدد چاہیے',
+            contentType: 'AUDIO',
+            createdAt: new Date(),
+          },
           { direction: 'OUTBOUND', senderType: 'AI', body: 'Hi there', contentType: 'TEXT', createdAt: new Date() },
+          { direction: 'INBOUND', senderType: 'CLIENT', body: 'Hello', contentType: 'TEXT', createdAt: new Date() },
         ]),
         count: vi.fn(async () => 1),
       },
@@ -74,6 +88,9 @@ describe('AiContextBuilder', () => {
     expect(ctx.clientId).toBe('client-1');
     expect(ctx.caseId).toBe('case-1');
     expect(ctx.conversationHistory).toContain('Client: Hello');
+    expect(ctx.conversationHistory).toContain('AI: Hi there');
+    expect(ctx.conversationHistory).toContain('مجھے طلاق کے کیس میں مدد چاہیے');
+    expect(ctx.lastAiReply).toBe('جی، بتائیں کیا ہوا؟');
     expect(ctx.intakeFields).toEqual({ practiceArea: 'Family Law' });
     expect(ctx.retrievedContext).toContain('Consultation fee');
     expect(ctx.ownerProfile?.ownerName).toBe('Adv. Ali');

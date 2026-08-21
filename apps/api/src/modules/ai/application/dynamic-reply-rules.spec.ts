@@ -20,5 +20,6 @@ describe('buildDynamicReplyRules', () => {
     expect(rules).toContain('{{displayName}}');
     expect(rules).toContain('First reply in this thread');
     expect(rules).toContain('Ask at most ONE question');
+    expect(rules).toContain('NEVER say you could not find the answer');
   });
 });

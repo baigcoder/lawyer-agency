@@ -208,6 +208,7 @@ function makeService(overrides: {
       contextBuilder,
       escalationAssignment,
       retriever as never,
+      { ensureForTenantInBackground: vi.fn() } as never,
       paymentInstructions as never,
       slots as never,
       appointments as never,
@@ -243,7 +244,7 @@ describe('AiOrchestratorService', () => {
   });
 
   it('sends handoff message and assigns lawyer when escalation detected', async () => {
-    const { service, send, outbox, tx, escalationAssignment } = makeService({
+    const { service, voiceReply, outbox, tx, escalationAssignment } = makeService({
       escalation: { triggerType: 'DOMESTIC_VIOLENCE', reason: 'abuse', excerpt: 'he hit me' },
       assigneeUserId: 'lawyer-1',
     });
@@ -262,15 +263,17 @@ describe('AiOrchestratorService', () => {
         data: expect.objectContaining({ state: 'HUMAN_REQUIRED', assignedToId: 'lawyer-1' }),
       }),
     );
-    expect(send.send).toHaveBeenCalledWith(
-      't1',
-      expect.objectContaining({ kind: 'text', body: expect.stringContaining('Test Firm') }),
+    expect(voiceReply.sendAiReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        responseText: expect.stringContaining("I've sent this to"),
+        inboundContentType: 'TEXT',
+      }),
     );
     expect(outbox.append).toHaveBeenCalledWith(expect.anything(), 't1', 'ai.escalation.triggered', expect.any(Object));
   });
 
   it('creates a real lawyer handoff when an agent requests professional review', async () => {
-    const { service, send, tx } = makeService({
+    const { service, voiceReply, tx } = makeService({
       agentResult: {
         responseText: 'This requires professional review.',
         languageDetected: 'EN',
@@ -288,13 +291,23 @@ describe('AiOrchestratorService', () => {
         data: expect.objectContaining({ triggerType: 'MANUAL' }),
       }),
     );
-    expect(tx.conversation.update).toHaveBeenCalledWith(
+    expect(tx.conversation.update).not.toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ state: 'HUMAN_REQUIRED' }) }),
     );
-    expect(send.send).toHaveBeenCalledWith(
-      't1',
-      expect.objectContaining({ body: expect.stringContaining('within 5 minutes') }),
+    expect(voiceReply.sendAiReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        responseText: expect.stringContaining('This requires professional review.'),
+      }),
     );
+  });
+
+  it('skips the router when a voice note has no transcript', async () => {
+    const { service, greeting, router } = makeService({
+      clientText: '(voice note — transcription unavailable)',
+    });
+    await service.process({ tenantId: 't1', conversationId: 'conv-1', messageId: 'msg-1' });
+    expect(greeting.run).toHaveBeenCalled();
+    expect(router.route).not.toHaveBeenCalled();
   });
 
   it('routes short greetings to the greeting agent even when the router says INTAKE', async () => {
@@ -336,13 +349,13 @@ describe('AiOrchestratorService', () => {
     expect(voiceReply.sendAiReply).toHaveBeenCalled();
   });
 
-  it('does not send when HUMAN_REQUIRED has an open escalation', async () => {
+  it('still replies when HUMAN_REQUIRED has an open escalation', async () => {
     const { service, voiceReply } = makeService({
       conversationState: 'HUMAN_REQUIRED',
       openEscalation: { id: 'esc-open' },
     });
     await service.process({ tenantId: 't1', conversationId: 'conv-1', messageId: 'msg-1' });
-    expect(voiceReply.sendAiReply).not.toHaveBeenCalled();
+    expect(voiceReply.sendAiReply).toHaveBeenCalled();
   });
 
   it('sends stored payment details and skips the LLM when the client asks for JazzCash', async () => {

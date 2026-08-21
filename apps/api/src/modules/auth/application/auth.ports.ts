@@ -22,13 +22,22 @@ export interface TokenVerifier {
 
 export const TOKEN_VERIFIER = Symbol('TOKEN_VERIFIER');
 
+export interface OrganizationInviteResult {
+  /** Clerk emails the invitee; 'skipped' only in the local no-Clerk path. */
+  emailDelivery: 'sent' | 'skipped';
+}
+
 export interface OrganizationInviter {
+  /** False in the local no-Clerk / Noop path — invites are local rows only. */
+  readonly invitationsEnabled: boolean;
   inviteMember(input: {
     clerkOrgId: string;
     email: string;
+    name: string;
     role: 'org:member' | 'org:admin';
+    roleLabel: string;
     inviterUserId?: string;
-  }): Promise<void>;
+  }): Promise<OrganizationInviteResult>;
 }
 
 export const ORGANIZATION_INVITER = Symbol('ORGANIZATION_INVITER');

@@ -39,7 +39,11 @@ export class EvolutionApiClient {
     this.apiKey = config.get('EVOLUTION_API_KEY', { infer: true });
   }
 
-  async createInstance(instanceName: string, connectionType: 'baileys' | 'cloud_api'): Promise<void> {
+  async createInstance(
+    instanceName: string,
+    connectionType: 'baileys' | 'cloud_api',
+    wavoipToken?: string | undefined,
+  ): Promise<void> {
     const integration = connectionType === 'cloud_api' ? 'WHATSAPP-CLOUD' : 'WHATSAPP-BAILEYS';
     await this.call('POST', '/instance/create', {
       instanceName,
@@ -52,10 +56,11 @@ export class EvolutionApiClient {
       readMessages: false,
       readStatus: false,
       syncFullHistory: false,
+      ...(connectionType === 'baileys' && wavoipToken ? { wavoipToken } : {}),
     });
   }
 
-  async setInstanceSettings(instanceName: string): Promise<void> {
+  async setInstanceSettings(instanceName: string, wavoipToken?: string | undefined): Promise<void> {
     await this.call('POST', `/settings/set/${instanceName}`, {
       rejectCall: false,
       msgCall: '',
@@ -64,6 +69,7 @@ export class EvolutionApiClient {
       readMessages: false,
       readStatus: false,
       syncFullHistory: false,
+      ...(wavoipToken ? { wavoipToken } : {}),
     });
   }
 
@@ -96,7 +102,7 @@ export class EvolutionApiClient {
       };
     }
 
-    let live = this.mapConnectionState(instanceName, stateRaw);
+    const live = this.mapConnectionState(instanceName, stateRaw);
 
     const raw = await this.call('GET', '/instance/fetchInstances').catch(() => []);
     const instances = Array.isArray(raw) ? raw : [];
@@ -136,6 +142,26 @@ export class EvolutionApiClient {
       {
         number: normalized,
         text: input.text,
+      },
+      { timeoutMs: 90_000 },
+    );
+    return { wamid: this.extractMessageId(response) };
+  }
+
+  /** WhatsApp PTT voice note. `encoding: true` converts mp3/wav to opus. */
+  async sendWhatsAppAudio(input: {
+    instanceName: string;
+    to: string;
+    audio: string;
+  }): Promise<{ wamid: string }> {
+    const response = await this.call(
+      'POST',
+      `/message/sendWhatsAppAudio/${input.instanceName}`,
+      {
+        number: this.normalizeNumber(input.to),
+        audio: input.audio,
+        encoding: true,
+        delay: 800,
       },
       { timeoutMs: 90_000 },
     );
@@ -184,6 +210,21 @@ export class EvolutionApiClient {
     return { buffer: Buffer.from(base64, 'base64'), mimeType };
   }
 
+  async sendCallAction(
+    instanceName: string,
+    action: 'pre_accept' | 'accept' | 'reject' | 'terminate',
+    callId: string,
+    sdpAnswer?: string,
+  ): Promise<void> {
+    await this.call('POST', `/call/${instanceName}`, {
+      callId,
+      action,
+      ...(sdpAnswer
+        ? { session: { sdp_type: 'answer', sdp: sdpAnswer } }
+        : {}),
+    });
+  }
+
   async setWebhook(instanceName: string, webhookUrl: string, secret: string): Promise<void> {
     // Evolution API v2 shape: the whole config lives under a `webhook` object
     // and event names are UPPER_SNAKE_CASE.
@@ -192,7 +233,7 @@ export class EvolutionApiClient {
         url: webhookUrl,
         enabled: true,
         by_events: false,
-        events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE', 'QRCODE_UPDATED', 'STATUS_INSTANCE'],
+        events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE', 'QRCODE_UPDATED', 'STATUS_INSTANCE', 'CALL'],
         headers: {
           'x-evolution-secret': secret,
         },

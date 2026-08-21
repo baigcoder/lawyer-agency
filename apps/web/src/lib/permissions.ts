@@ -19,7 +19,7 @@ export const DASHBOARD_ROUTE_RULES: Array<{ prefix: string; anyOf: string[] }> =
   { prefix: '/dashboard/inbox', anyOf: ['inbox:read'] },
   { prefix: '/dashboard/escalations', anyOf: ['inbox:read'] },
   { prefix: '/dashboard/cases', anyOf: ['cases:read'] },
-  { prefix: '/dashboard/documents', anyOf: ['cases:read'] },
+  { prefix: '/dashboard/documents', anyOf: ['cases:write'] },
   { prefix: '/dashboard/knowledge', anyOf: ['knowledge-base:read'] },
   { prefix: '/dashboard/calendar', anyOf: ['appointments:read'] },
   { prefix: '/dashboard/team', anyOf: ['users:read'] },

@@ -35,6 +35,8 @@ export const DOMAIN_EVENTS = {
   DocumentRequested: 'document.requested',
   DocumentRequestFulfilled: 'document.request.fulfilled',
   DocumentReceived: 'document.received',
+  VoiceCallStarted: 'voice_call.started',
+  VoiceCallCompleted: 'voice_call.completed',
 } as const;
 
 export type DomainEventType = (typeof DOMAIN_EVENTS)[keyof typeof DOMAIN_EVENTS];
@@ -176,5 +178,14 @@ export const domainEventPayloads = {
     clientId: z.uuid(),
     messageId: z.uuid(),
     caseId: z.uuid().optional(),
+  }),
+  [DOMAIN_EVENTS.VoiceCallStarted]: z.object({
+    voiceCallId: z.uuid(),
+    conversationId: z.uuid(),
+  }),
+  [DOMAIN_EVENTS.VoiceCallCompleted]: z.object({
+    voiceCallId: z.uuid(),
+    conversationId: z.uuid(),
+    disposition: z.string().min(1),
   }),
 } satisfies Record<DomainEventType, z.ZodType>;

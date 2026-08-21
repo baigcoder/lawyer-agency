@@ -41,6 +41,9 @@ declare module 'express' {
  * 2. Dev seam: when Clerk keys are absent, reads `x-tenant-id` and optionally
  *    `x-user-id` headers. This keeps local integration tests and dashboard
  *    development working without a live Clerk tenant.
+ * 3. Mixed local: `NODE_ENV !== production` with Clerk keys still accepts the
+ *    D-037 `x-tenant-id` header when no Bearer token is present, so the
+ *    dashboard can run with Clerk disabled while the API keeps test keys.
  *
  * The guard writes tenant/user context into the request-scoped store so every
  * downstream layer (decorators, UnitOfWork, services) sees the same identity.
@@ -56,8 +59,11 @@ export class AuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<Request>();
     const clerkEnabled = Boolean(this.config.get('CLERK_SECRET_KEY', { infer: true }));
+    const nodeEnv = this.config.get('NODE_ENV', { infer: true }) ?? 'development';
+    const useClerk =
+      clerkEnabled && (this.hasBearer(req) || nodeEnv === 'production');
 
-    const principal = clerkEnabled
+    const principal = useClerk
       ? await this.resolveClerkPrincipal(req)
       : this.resolveDevPrincipal(req);
 
@@ -66,6 +72,11 @@ export class AuthGuard implements CanActivate {
     if (principal.userId) contextPatch.userId = principal.userId;
     RequestContextStore.set(contextPatch);
     return true;
+  }
+
+  private hasBearer(req: Request): boolean {
+    const header = req.headers.authorization;
+    return typeof header === 'string' && BEARER.test(header);
   }
 
   private async resolveClerkPrincipal(req: Request): Promise<RequestPrincipal> {

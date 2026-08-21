@@ -63,7 +63,7 @@ export class AiContextBuilder {
     const conversationHistory = formatHistory(chronological);
     const lastAiReply =
       messages.find(
-        (m) => m.direction === 'OUTBOUND' && m.senderType === 'AI' && m.contentType === 'TEXT' && m.body,
+        (m) => m.direction === 'OUTBOUND' && m.senderType === 'AI' && Boolean(m.body?.trim()),
       )?.body ?? '';
 
     return {
@@ -127,11 +127,15 @@ function formatHistory(
     .map((m) => {
       const role =
         m.direction === 'INBOUND' ? 'Client' : m.senderType === 'AI' ? 'AI' : 'Staff';
-      const body =
-        m.contentType === 'TEXT' && m.body ? m.body : `[${m.contentType.toLowerCase()} message]`;
-      return `${role}: ${body}`;
+      return `${role}: ${historyBody(m.body, m.contentType)}`;
     })
     .join('\n');
+}
+
+export function historyBody(body: string | null, contentType: string): string {
+  const text = body?.trim();
+  if (text) return text;
+  return `[${contentType.toLowerCase()} message]`;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

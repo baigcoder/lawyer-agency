@@ -9,6 +9,7 @@ import {
   WHATSAPP_ACCOUNT_REPOSITORY,
   WHATSAPP_CONNECTION_REPOSITORY,
   WHATSAPP_TEMPLATE_REPOSITORY,
+  WHATSAPP_CALLING,
 } from './application/ports';
 import { MetaCloudApiClient } from './infrastructure/meta-cloud-api.client';
 import { MetaOAuthClientImpl } from './infrastructure/meta-oauth.client';
@@ -27,6 +28,7 @@ import { EvolutionOutboundSender } from './application/evolution-outbound-sender
 import { SendService } from './application/send.service';
 import { MediaReadService } from './application/media-read.service';
 import { EvolutionApiClient } from './infrastructure/evolution-api.client';
+import { WhatsappCallingAdapter } from './infrastructure/whatsapp-calling.adapter';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../../config/env';
 
@@ -46,6 +48,7 @@ import type { Env } from '../../config/env';
     MetaCloudApiClient,
     DevMockMetaCloudApi,
     EvolutionApiClient,
+    { provide: WHATSAPP_CALLING, useClass: WhatsappCallingAdapter },
     {
       provide: META_CLOUD_API,
       inject: [ConfigService, MetaCloudApiClient, DevMockMetaCloudApi],
@@ -99,6 +102,7 @@ import type { Env } from '../../config/env';
     SendService,
     MediaReadService,
     EvolutionApiClient,
+    WHATSAPP_CALLING,
   ],
 })
 export class WhatsappPortsModule {}

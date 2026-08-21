@@ -39,8 +39,14 @@ import { AnalyticsModule, createAnalyticsHandlers } from './modules/analytics/an
 import { AnalyticsProjector } from './modules/analytics/application/analytics-projector.service';
 import { AuditModule } from './modules/audit/audit.module';
 import { FirmProfileModule } from './modules/firm-profile/firm-profile.module';
+import { VoiceCallsModule } from './modules/voice-calls/voice-calls.module';
 
-const isWorker = process.env['API_ROLE'] === 'worker';
+const role = process.env['API_ROLE'] ?? 'api';
+const isWorker = role === 'worker';
+const isVoice = role === 'voice';
+const queueRole = isWorker ? 'worker' : isVoice ? 'voice' : 'api';
+// Voice holds live calls only — do not attach worker processors (media, SLA, reminders).
+const siblingRole = isWorker ? 'worker' : 'api';
 
 @Module({
   imports: [
@@ -76,25 +82,29 @@ const isWorker = process.env['API_ROLE'] === 'worker';
     // Role-aware: consumers exist only on role=worker (D-013). The env value
     // is read raw here (module composition precedes ConfigModule validation);
     // main.ts uses the validated config for the listen branch.
-    QueueModule.register(isWorker ? 'worker' : 'api'),
+    QueueModule.register(queueRole),
     HealthModule,
-    isWorker ? WhatsappWorkerModule.register() : WhatsappModule.register('api'),
-    WhatsappUpgradeModule.register(isWorker ? 'worker' : 'api'),
+    isVoice
+      ? VoiceCallsModule.register('voice')
+      : isWorker
+        ? WhatsappWorkerModule.register()
+        : WhatsappModule.register('api'),
+    WhatsappUpgradeModule.register(siblingRole),
     // Domain modules — Cases is the implemented reference (4b); the rest are
     // boundary-declared shells filled in their own phases.
-    CasesModule.register(isWorker ? 'worker' : 'api'),
+    CasesModule.register(siblingRole),
     AuthModule,
     UsersModule,
     LawyersModule,
     MessagesModule,
-    AiModule.register(isWorker ? 'worker' : 'api'),
+    AiModule.register(siblingRole),
     RagModule,
-    DocumentsModule.register(isWorker ? 'worker' : 'api'),
+    DocumentsModule.register(siblingRole),
     AppointmentsModule,
-    PaymentsModule.register(isWorker ? 'worker' : 'api'),
-    NotificationsModule.register(isWorker ? 'worker' : 'api'),
-    InboxModule.register(isWorker ? 'worker' : 'api'),
-    AnalyticsModule.register(isWorker ? 'worker' : 'api'),
+    PaymentsModule.register(siblingRole),
+    NotificationsModule.register(siblingRole),
+    InboxModule.register(siblingRole),
+    AnalyticsModule.register(siblingRole),
     AuditModule,
     FirmProfileModule,
   ],

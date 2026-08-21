@@ -1,9 +1,10 @@
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import { clerkMiddleware } from '@clerk/nextjs/server';
 import { NextResponse, type NextRequest } from 'next/server';
+import { clerkEnabled } from '@/lib/env';
 
-const isDashboardRoute = createRouteMatcher(['/dashboard(.*)']);
-const isOnboardingRoute = createRouteMatcher(['/onboarding(.*)']);
-const isBackendRoute = createRouteMatcher(['/backend(.*)']);
+function matchesPrefix(pathname: string, prefix: string): boolean {
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
 
 /**
  * Next.js 16 convention: `proxy.ts` is the request-edge hook (successor to
@@ -19,17 +20,29 @@ const isBackendRoute = createRouteMatcher(['/backend(.*)']);
  * Authorization header so the API can verify identity (Phase 10, D-017).
  * In dev-seam mode we forward the configured tenant/user headers instead.
  */
-export default process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+export default clerkEnabled
   ? clerkMiddleware(
       async (auth, req) => {
-        if (isDashboardRoute(req) || isOnboardingRoute(req)) await auth.protect();
-        if (isDashboardRoute(req)) {
-          const { orgId } = await auth();
-          if (!orgId) {
+        const pathname = req.nextUrl.pathname;
+        const isDashboard = matchesPrefix(pathname, '/dashboard');
+        const isOnboarding = matchesPrefix(pathname, '/onboarding');
+        const isResetPassword = matchesPrefix(pathname, '/reset-password');
+        if (isDashboard || isOnboarding || isResetPassword) {
+          const session = await auth({ treatPendingAsSignedOut: false });
+          if (!session.userId) {
+            await auth.protect();
+          }
+          const pending = session.sessionStatus === 'pending';
+          // Pending + org: usually Clerk `reset-password` (team invite temp password).
+          // Do not send those users to firm setup /onboarding.
+          if (isDashboard && pending && session.orgId) {
+            return NextResponse.redirect(new URL('/reset-password', req.url));
+          }
+          if (isDashboard && !session.orgId) {
             return NextResponse.redirect(new URL('/onboarding', req.url));
           }
         }
-        if (isBackendRoute(req)) {
+        if (matchesPrefix(pathname, '/backend')) {
           const session = await auth();
           const token = await session.getToken();
           if (token) {
@@ -42,7 +55,7 @@ export default process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
       },
     )
   : function devProxy(req: NextRequest) {
-      if (isBackendRoute(req)) {
+      if (matchesPrefix(req.nextUrl.pathname, '/backend')) {
         const headers = new Headers(req.headers);
         const tenantId = process.env.NEXT_PUBLIC_DEV_TENANT_ID;
         const userId = process.env.NEXT_PUBLIC_DEV_USER_ID;

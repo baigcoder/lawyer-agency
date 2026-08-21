@@ -16,7 +16,7 @@
 - **No git mutations** (commit/push) unless the user explicitly asks.
 
 ## Stack (current, deliberate)
-- `apps/api`: NestJS 11, Prisma 7 (`prisma-client` generator + `@prisma/adapter-pg`; client generated into `src/generated`), PostgreSQL 16 + pgvector, Redis + BullMQ. One image, roles `api|worker` (`API_ROLE`).
+- `apps/api`: NestJS 11, Prisma 7 (`prisma-client` generator + `@prisma/adapter-pg`; client generated into `src/generated`), PostgreSQL 16 + pgvector, Redis + BullMQ. One image, roles `api|worker|voice` (`API_ROLE`; `voice` is the WhatsApp receptionist: Cloud Calling WebRTC, QR/Baileys via Wavoip or missed-call chat, D-124).
 - `apps/web`: Next.js 16 (App Router, `proxy.ts` convention), React 19, Tailwind v4, shadcn/ui on **Base UI** (`render` prop, not `asChild`), TanStack Query, RHF+zod, Clerk v7 (env-gated dev seam when keys absent).
 - WhatsApp transport: **Evolution API** (self-hosted) is the sole transport layer; it hosts Baileys and Cloud API instances per tenant. Wakeel connects to Evolution via REST and consumes its webhooks. The legacy in-house Baileys pilot bridge and direct Meta Cloud API integration are removed from active wiring.
 - Web talks to API only via same-origin `/backend/*` rewrites (no CORS anywhere).
@@ -24,7 +24,7 @@
 ## Commands
 ```bash
 npm install                      # workspaces: apps/api + apps/web
-docker compose up -d             # postgres+pgvector, redis, evolution-api+postgres+redis, migrate, seed, api, worker
+docker compose up -d             # postgres+pgvector, redis, evolution-api+postgres+redis, migrate, seed, api, worker, voice
                                  # seed provisions the dev seam tenant automatically
 npm run build                    # both apps (docker images are built from dist)
 cd apps/api && npx vitest run    # backend unit tests

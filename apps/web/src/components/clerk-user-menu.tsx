@@ -16,7 +16,13 @@ export function ClerkAccountMenu() {
   const email = session?.email ?? user?.primaryEmailAddress?.emailAddress ?? null;
   const imageUrl = user?.imageUrl ?? null;
   const roleLabel =
-    session?.role === 'Admin' ? t('roleOwner') : session?.role === 'Lawyer' ? t('roleLawyer') : session?.role ?? null;
+    session?.role === 'Admin'
+      ? t('roleOwner')
+      : session?.role === 'Lawyer'
+        ? t('roleLawyer')
+        : session?.role === 'Staff'
+          ? t('roleStaff')
+          : session?.role ?? null;
 
   return (
     <div className="flex items-center gap-1">

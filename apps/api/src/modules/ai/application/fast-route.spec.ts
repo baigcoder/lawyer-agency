@@ -2,6 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { fastRoute, needsRetrieval } from './fast-route';
 
 describe('fastRoute', () => {
+  it('classifies unusable voice transcripts without an LLM', () => {
+    expect(
+      fastRoute({
+        clientText: '(voice note — transcription unavailable)',
+        hasOpenCase: false,
+        hasIntakeFields: false,
+      })?.intent,
+    ).toBe('GREETING');
+  });
+
   it('classifies short greetings without an LLM', () => {
     expect(fastRoute({ clientText: 'Hy', hasOpenCase: false, hasIntakeFields: false })?.intent).toBe('GREETING');
     expect(fastRoute({ clientText: 'Salam', hasOpenCase: false, hasIntakeFields: false })?.intent).toBe(

@@ -6,6 +6,7 @@ import { SimpleRetriever } from './infrastructure/simple-retriever';
 import { ResilientRetriever } from './infrastructure/resilient-retriever';
 import { OpenAiEmbeddingClient } from './infrastructure/openai-embedding.client';
 import { KnowledgeBaseService } from './application/knowledge-base.service';
+import { PakistanKbSeedService } from './application/pakistan-kb-seed.service';
 import { KnowledgeBaseController } from './interface/knowledge-base.controller';
 
 /**
@@ -18,12 +19,13 @@ import { KnowledgeBaseController } from './interface/knowledge-base.controller';
   controllers: [KnowledgeBaseController],
   providers: [
     KnowledgeBaseService,
+    PakistanKbSeedService,
     { provide: EMBEDDING_CLIENT, useClass: OpenAiEmbeddingClient },
     VectorRetriever,
     SimpleRetriever,
     ResilientRetriever,
     { provide: RETRIEVER, useClass: ResilientRetriever },
   ],
-  exports: [RETRIEVER, EMBEDDING_CLIENT, KnowledgeBaseService],
+  exports: [RETRIEVER, EMBEDDING_CLIENT, KnowledgeBaseService, PakistanKbSeedService],
 })
 export class RagModule {}

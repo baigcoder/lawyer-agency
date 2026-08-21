@@ -11,6 +11,10 @@ export const userSummarySchema = z.object({
   createdAt: z.coerce.date(),
 });
 
+export const inviteUserResultSchema = userSummarySchema.extend({
+  emailDelivery: z.enum(['sent', 'skipped']),
+});
+
 export const userListSchema = z.array(userSummarySchema);
 
 export const roleSummarySchema = z.object({
@@ -30,5 +34,6 @@ export const inviteUserSchema = z.object({
 });
 
 export type UserSummary = z.infer<typeof userSummarySchema>;
+export type InviteUserResult = z.infer<typeof inviteUserResultSchema>;
 export type RoleSummary = z.infer<typeof roleSummarySchema>;
 export type InviteUserInput = z.infer<typeof inviteUserSchema>;

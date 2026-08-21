@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { LoaderCircle, Mail, Save, UserPlus, Users } from 'lucide-react';
@@ -27,7 +27,7 @@ import { useLanguage } from '@/lib/language';
 import { useSession } from '@/lib/session';
 import { cn } from '@/lib/utils';
 import { availabilitySlotSchema, lawyerListSchema, lawyerSchema, type AvailabilitySlot, type LawyerDto } from '@/lib/schemas/lawyers';
-import { inviteUserSchema, roleListSchema, userListSchema, userSummarySchema, type UserSummary } from '@/lib/schemas/users';
+import { inviteUserSchema, inviteUserResultSchema, roleListSchema, userListSchema, type UserSummary } from '@/lib/schemas/users';
 import { practiceAreaOptions } from '@/lib/schemas/firm-profile';
 
 const WEEKDAYS = [
@@ -81,7 +81,7 @@ function InviteMemberForm() {
 
   const invite = useMutation({
     mutationFn: (body: z.infer<typeof inviteUserSchema>) =>
-      apiRequest('/v1/users', { method: 'POST', body, schema: userSummarySchema }),
+      apiRequest('/v1/users', { method: 'POST', body, schema: inviteUserResultSchema }),
     onSuccess: () => {
       toast.success(t('invitationSent'));
       setName('');
@@ -108,7 +108,7 @@ function InviteMemberForm() {
     }
     const parsed = inviteUserSchema.safeParse({
       name: name.trim(),
-      email: email.trim(),
+      email: email.trim().toLowerCase(),
       roleId: selectedRole,
       phone: phone.trim() || undefined,
     });
@@ -185,8 +185,10 @@ function UsersTable({ users, lawyers, canManage }: { users: UserSummary[]; lawye
 
   const resendInvite = useMutation({
     mutationFn: (userId: string) =>
-      apiRequest(`/v1/users/${userId}/resend-invite`, { method: 'POST', schema: userSummarySchema }),
-    onSuccess: () => toast.success(t('invitationResent')),
+      apiRequest(`/v1/users/${userId}/resend-invite`, { method: 'POST', schema: inviteUserResultSchema }),
+    onSuccess: () => {
+      toast.success(t('invitationResent'));
+    },
     onError: (error) => toast.error(error instanceof ApiError ? error.message : t('couldNotResendInvite')),
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['users'] });
@@ -435,8 +437,9 @@ function AvailabilityEditor({ lawyer, onSaved }: { lawyer: LawyerDto; onSaved: (
 
 function TeamContent() {
   const { t } = useLanguage();
-  const { can } = useSession();
+  const { can, session } = useSession();
   const canManage = can('users:write');
+  const canEditAvailability = can('users:write') || can('lawyers:write');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const lawyers = useQuery({
     queryKey: ['lawyers'],
@@ -451,6 +454,19 @@ function TeamContent() {
     () => lawyers.data?.find((l) => l.id === selectedId) ?? lawyers.data?.[0] ?? null,
     [lawyers.data, selectedId],
   );
+
+  useEffect(() => {
+    if (selectedId || !lawyers.data?.length || !session?.userId) return;
+    const mine = lawyers.data.find((l) => l.userId === session.userId);
+    if (mine) setSelectedId(mine.id);
+  }, [lawyers.data, selectedId, session?.userId]);
+  const canEditSelected =
+    canEditAvailability &&
+    Boolean(
+      selected &&
+        (can('users:write') ||
+          (session?.userId && selected.userId === session.userId)),
+    );
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -532,7 +548,7 @@ function TeamContent() {
         </div>
       ) : null}
 
-      {selected && canManage ? (
+      {selected && canEditSelected ? (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">{selected.name}</CardTitle>
@@ -546,6 +562,12 @@ function TeamContent() {
           </CardHeader>
           <CardContent>
             <AvailabilityEditor key={selected.id} lawyer={selected} onSaved={() => {}} />
+          </CardContent>
+        </Card>
+      ) : selected && canEditAvailability && !canEditSelected ? (
+        <Card>
+          <CardContent className="py-6 text-sm text-muted-foreground">
+            {t('lawyerAvailabilityOwnOnly')}
           </CardContent>
         </Card>
       ) : null}

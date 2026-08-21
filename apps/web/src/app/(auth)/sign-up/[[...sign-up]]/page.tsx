@@ -1,23 +1,22 @@
 import { SignUp } from '@clerk/nextjs';
-import Link from 'next/link';
+import { DevAuthPage } from '@/components/dev-auth-page';
 import { clerkEnabled } from '@/lib/env';
 
 export default function SignUpPage() {
   if (!clerkEnabled) {
-    return (
-      <main id="main" className="flex min-h-screen items-center justify-center p-4">
-        <p className="text-muted-foreground">
-          Auth is disabled in this dev environment.{' '}
-          <Link href="/dashboard" className="text-primary underline">
-            Continue to dashboard
-          </Link>
-        </p>
-      </main>
-    );
+    return <DevAuthPage mode="sign-up" />;
   }
   return (
     <main id="main" className="flex min-h-screen items-center justify-center p-4">
-      <SignUp fallbackRedirectUrl="/onboarding" />
+      <SignUp
+        path="/sign-up"
+        routing="path"
+        signInUrl="/sign-in"
+        forceRedirectUrl="/dashboard"
+        fallbackRedirectUrl="/dashboard"
+        signInForceRedirectUrl="/dashboard"
+        signInFallbackRedirectUrl="/dashboard"
+      />
     </main>
   );
 }

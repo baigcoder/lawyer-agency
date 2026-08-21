@@ -1,15 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseAiSettings } from '../../firm-profile/application/ai-settings.dto';
-
-function shouldUseVoice(
-  settings: ReturnType<typeof parseAiSettings>,
-  inboundContentType: string,
-): boolean {
-  if (!settings.aiVoiceEnabled) return false;
-  if (settings.aiVoiceReplyMode === 'text_only') return false;
-  if (settings.aiVoiceReplyMode === 'voice_only') return true;
-  return inboundContentType === 'AUDIO';
-}
+import { shouldUseVoiceReply, spokenLanguage } from './voice-reply.service';
 
 describe('voice reply policy', () => {
   const base = parseAiSettings({
@@ -17,18 +8,20 @@ describe('voice reply policy', () => {
     aiVoiceReplyMode: 'auto',
   });
 
-  it('replies with voice when client sent audio in auto mode', () => {
-    expect(shouldUseVoice(base, 'AUDIO')).toBe(true);
-    expect(shouldUseVoice(base, 'TEXT')).toBe(false);
-  });
-
-  it('replies with voice for all messages in voice_only mode', () => {
-    const settings = { ...base, aiVoiceReplyMode: 'voice_only' as const };
-    expect(shouldUseVoice(settings, 'TEXT')).toBe(true);
+  it('in auto mode replies with voice only when the client sent a voice note', () => {
+    expect(shouldUseVoiceReply(base, 'AUDIO')).toBe(true);
+    expect(shouldUseVoiceReply(base, 'TEXT')).toBe(false);
+    expect(shouldUseVoiceReply({ ...base, aiVoiceReplyMode: 'voice_only' }, 'TEXT')).toBe(true);
   });
 
   it('never uses voice when disabled or text_only', () => {
-    expect(shouldUseVoice({ ...base, aiVoiceEnabled: false }, 'AUDIO')).toBe(false);
-    expect(shouldUseVoice({ ...base, aiVoiceReplyMode: 'text_only' }, 'AUDIO')).toBe(false);
+    expect(shouldUseVoiceReply({ ...base, aiVoiceEnabled: false })).toBe(false);
+    expect(shouldUseVoiceReply({ ...base, aiVoiceReplyMode: 'text_only' })).toBe(false);
+  });
+
+  it('speaks Urdu when the reply language or script is Urdu', () => {
+    expect(spokenLanguage('UR', 'hello')).toBe('ur');
+    expect(spokenLanguage('EN', 'السلام علیکم')).toBe('ur');
+    expect(spokenLanguage('EN', 'How can I help?')).toBe('en');
   });
 });

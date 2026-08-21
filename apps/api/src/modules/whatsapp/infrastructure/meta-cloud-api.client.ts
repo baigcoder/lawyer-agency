@@ -121,6 +121,14 @@ export class MetaCloudApiClient implements MetaCloudApi {
     return { buffer, mimeType: contentType, filename };
   }
 
+  async postCall(params: {
+    accessToken: string;
+    phoneNumberId: string;
+    body: Record<string, unknown>;
+  }): Promise<void> {
+    await this.call('POST', `/${params.phoneNumberId}/calls`, params.accessToken, params.body);
+  }
+
   private async call(
     method: 'GET' | 'POST',
     path: string,

@@ -52,9 +52,11 @@ function readAiAutoReplyEnabled(settings: unknown): boolean {
   return typeof value === 'boolean' ? value : true;
 }
 
-function urduHint(clientLanguages: unknown): 'ur' | undefined {
-  if (!Array.isArray(clientLanguages)) return undefined;
-  return clientLanguages.includes('UR') || clientLanguages.includes('ROMAN_URDU') ? 'ur' : undefined;
+export function urduHint(clientLanguages: unknown): 'ur' | undefined {
+  if (!Array.isArray(clientLanguages)) return 'ur';
+  if (clientLanguages.includes('UR') || clientLanguages.includes('ROMAN_URDU')) return 'ur';
+  if (clientLanguages.includes('EN') && clientLanguages.length === 1) return undefined;
+  return 'ur';
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -196,16 +198,15 @@ export class WhatsappMediaProcessor extends WorkerHost {
 
     const ext = mediaExtension(mimeType, context.message.contentType);
     const mediaPath = `tenants/${tenantId}/media/${messageId}.${ext}`;
-    try {
-      await this.storage.put(mediaPath, downloaded.buffer);
-    } catch (error) {
+    const stored = this.storage.put(mediaPath, downloaded.buffer).catch((error: unknown) => {
       this.logger.warn(
         { tenantId, messageId, error: error instanceof Error ? error.message : String(error) },
         'inbound media storage failed — continuing with transcription',
       );
-    }
+    });
 
     let transcript = context.message.body;
+    let transcriptLanguage: string | null = null;
     if (context.message.contentType === 'AUDIO') {
       try {
         const result = await this.stt.transcribe({
@@ -214,11 +215,13 @@ export class WhatsappMediaProcessor extends WorkerHost {
           languageHint: urduHint(context.clientLanguages),
         });
         transcript = result.text || '(voice note — no transcript)';
+        transcriptLanguage = result.language;
       } catch (error) {
         this.logger.warn({ tenantId, messageId, error }, 'stt failed for inbound audio');
         transcript = '(voice note — transcription unavailable)';
       }
     }
+    await stored;
 
     const durationSeconds = readAudioSeconds(payload);
 
@@ -232,6 +235,7 @@ export class WhatsappMediaProcessor extends WorkerHost {
             mimeType,
             ...(mediaPath ? { mediaPath } : {}),
             ...(durationSeconds ? { durationSeconds } : {}),
+            ...(transcriptLanguage ? { transcriptLanguage } : {}),
           }),
         },
       });

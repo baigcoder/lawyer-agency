@@ -7,7 +7,13 @@ import type {
   TextToSpeechPort,
   TtsVoice,
 } from '../application/text-to-speech.port';
-import { buildElevenLabsTtsBody, resolveTtsLanguage } from './elevenlabs-tts.request';
+import {
+  buildElevenLabsTtsBody,
+  FALLBACK_ENGLISH_TTS_MODEL,
+  FALLBACK_QUALITY_TTS_MODEL,
+  resolveTtsLanguage,
+} from './elevenlabs-tts.request';
+import { synthesizeWithEspeak } from './espeak-tts';
 
 export const DEFAULT_VOICE_MALE = 'pNInz6obpgDQGcFmaJgB';
 export const DEFAULT_VOICE_FEMALE = 'EXAVITQu4vr4xnSDxMaL';
@@ -77,10 +83,25 @@ export class ElevenLabsTtsClient implements TextToSpeechPort {
   }
 
   async synthesize(input: SynthesizeInput): Promise<SynthesizeResult> {
-    if (!this.apiKey) {
+    const pcm = input.outputFormat === 'pcm_24000';
+    if (this.apiKey) {
+      try {
+        return await this.synthesizeElevenLabs(input, pcm);
+      } catch (error) {
+        this.logger.warn(
+          { err: error instanceof Error ? error.message : 'tts' },
+          'elevenlabs tts failed — trying local espeak',
+        );
+        if (pcm) throw error;
+      }
+    } else if (pcm) {
       throw new Error('ELEVENLABS_API_KEY is not configured');
     }
 
+    return synthesizeWithEspeak(input);
+  }
+
+  private async synthesizeElevenLabs(input: SynthesizeInput, pcm: boolean): Promise<SynthesizeResult> {
     const language = resolveTtsLanguage(input.text, input.language);
     const voiceId =
       input.voiceId?.trim() ||
@@ -91,17 +112,32 @@ export class ElevenLabsTtsClient implements TextToSpeechPort {
         : input.voiceGender === 'male'
           ? this.voiceMale
           : this.voiceFemale);
-    const body = buildElevenLabsTtsBody({ text: input.text, language });
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'xi-api-key': this.apiKey,
-        accept: 'audio/mpeg',
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(120_000),
-    });
+    const body = buildElevenLabsTtsBody({ text: input.text, language, liveCall: pcm });
+    const format = pcm ? 'pcm_24000' : 'mp3_44100_64';
+    const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=${format}`;
+    let response = await this.postTts(url, body, pcm);
+
+    if (!response.ok) {
+      const fallbackText = await response.text().catch(() => 'unknown');
+      this.logger.warn(
+        { status: response.status, body: fallbackText.slice(0, 200), model: body.model_id },
+        'elevenlabs turbo/flash failed — retrying v3',
+      );
+      response = await this.postTts(
+        url,
+        { ...body, model_id: FALLBACK_QUALITY_TTS_MODEL },
+        pcm,
+      );
+    }
+
+    if (!response.ok && language === 'en') {
+      const fallbackText = await response.text().catch(() => 'unknown');
+      this.logger.warn(
+        { status: response.status, body: fallbackText.slice(0, 200) },
+        'elevenlabs v3 failed — retrying multilingual v2',
+      );
+      response = await this.postTts(url, { text: body.text, model_id: FALLBACK_ENGLISH_TTS_MODEL }, pcm);
+    }
 
     if (!response.ok) {
       const text = await response.text().catch(() => 'unknown');
@@ -112,9 +148,22 @@ export class ElevenLabsTtsClient implements TextToSpeechPort {
     const audioBuffer = Buffer.from(await response.arrayBuffer());
     return {
       audioBuffer,
-      mimeType: 'audio/mpeg',
+      mimeType: pcm ? 'audio/pcm' : 'audio/mpeg',
       charactersUsed: input.text.length,
     };
+  }
+
+  private async postTts(url: string, body: object, pcm: boolean): Promise<Response> {
+    return fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'xi-api-key': this.apiKey ?? '',
+        accept: pcm ? 'application/octet-stream' : 'audio/mpeg',
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(pcm ? 20_000 : 25_000),
+    });
   }
 }
 

@@ -5,11 +5,37 @@ import { UnitOfWork } from '../../../common/prisma/unit-of-work';
 import { DocumentsService } from '../../documents/application/documents.service';
 import { SendService } from '../../whatsapp/application/send.service';
 import { WindowClosedError } from '../../../common/messaging/window-policy';
+import {
+  AppointmentNotificationsService,
+  buildAppointmentConfirmationText,
+  formatAppointmentDateTime,
+  formatAppointmentTimeOnly,
+} from '../../appointments/application/appointment-notifications.service';
+import type { AppointmentSummary } from '../../appointments/application/appointments.service';
 import { buildPaymentReceiptPdf } from './payment-receipt.pdf';
+import { buildAppointmentConfirmationPdf } from './appointment-confirmation.pdf';
+
+type ResolvedAppointment = {
+  id: string;
+  clientId: string;
+  clientName: string | null;
+  clientWaPhone: string;
+  lawyerId: string;
+  lawyerName: string;
+  caseId: string | null;
+  startsAt: Date;
+  endsAt: Date;
+  status: string;
+  location: string | null;
+  notes: string | null;
+  reminderSentAt: Date | null;
+};
 
 /**
  * After owner verification (`payment.succeeded`), generate a PDF receipt and
- * send it to the client on WhatsApp (D-120). Screenshots never leave T3.
+ * send it to the client on WhatsApp (D-120). When an appointment is linked or
+ * resolvable, also send an appointment confirmation PDF + WhatsApp text.
+ * Screenshots never leave T3.
  */
 @Injectable()
 export class PaymentReceiptHandler implements DomainEventHandler {
@@ -20,6 +46,7 @@ export class PaymentReceiptHandler implements DomainEventHandler {
     private readonly uow: UnitOfWork,
     private readonly documents: DocumentsService,
     private readonly send: SendService,
+    private readonly appointmentNotifications: AppointmentNotificationsService,
   ) {}
 
   async handle(job: DomainEventJob): Promise<void> {
@@ -83,6 +110,76 @@ export class PaymentReceiptHandler implements DomainEventHandler {
       }
       throw error;
     }
+
+    if (context.appointment) {
+      await this.sendAppointmentConfirmations(job.tenantId, context);
+    }
+  }
+
+  private async sendAppointmentConfirmations(
+    tenantId: string,
+    context: NonNullable<Awaited<ReturnType<PaymentReceiptHandler['loadContext']>>>,
+  ): Promise<void> {
+    const appointment = context.appointment!;
+    const dateTimeLabel = formatAppointmentDateTime(appointment.startsAt);
+    const endTimeLabel = formatAppointmentTimeOnly(appointment.endsAt);
+    const whenLabel = `${dateTimeLabel} to ${endTimeLabel}`;
+
+    const apptPdf = await buildAppointmentConfirmationPdf({
+      firmName: context.firmName,
+      clientName: context.clientName,
+      lawyerName: appointment.lawyerName,
+      dateTimeLabel: whenLabel,
+      endTimeLabel,
+      location: appointment.location ?? undefined,
+      paymentVerifiedLine: 'Payment verified',
+    });
+
+    const apptFilename = `appointment-${appointment.id.slice(0, 8)}.pdf`;
+    const apptDocument = await this.documents.upload({
+      tenantId,
+      clientId: context.clientId,
+      caseId: context.caseId,
+      filename: apptFilename,
+      description: `Appointment confirmation for ${whenLabel}`,
+      docType: 'OTHER',
+      buffer: apptPdf,
+      mimeType: 'application/pdf',
+    });
+
+    const apptCaption = buildAppointmentConfirmationText(appointment);
+
+    try {
+      await this.send.send(tenantId, {
+        kind: 'document',
+        conversationId: context.conversationId,
+        toWaPhone: context.waPhone,
+        senderType: 'SYSTEM',
+        caption: apptCaption,
+        fileName: apptFilename,
+        mimeType: 'application/pdf',
+        documentBuffer: apptPdf,
+        documentPath: apptDocument.storagePath,
+      });
+    } catch (error) {
+      if (error instanceof WindowClosedError) {
+        this.logger.warn(
+          { tenantId, conversationId: context.conversationId },
+          '24h window closed — appointment PDF not sent',
+        );
+      } else {
+        throw error;
+      }
+    }
+
+    try {
+      await this.appointmentNotifications.sendConfirmation(tenantId, appointment as AppointmentSummary);
+    } catch (error) {
+      this.logger.warn(
+        { tenantId, appointmentId: appointment.id, err: error instanceof Error ? error.message : 'confirm' },
+        'appointment WhatsApp text confirmation failed after payment verify',
+      );
+    }
   }
 
   private async loadContext(tenantId: string, paymentId: string) {
@@ -104,17 +201,14 @@ export class PaymentReceiptHandler implements DomainEventHandler {
           : tenant?.name ?? 'Firm';
 
       const meta = asRecord(payment.metadata);
-      const appointmentId = typeof meta['appointmentId'] === 'string' ? meta['appointmentId'] : null;
-      let appointmentLabel: string | undefined;
-      if (appointmentId) {
-        const appointment = await tx.appointment.findFirst({
-          where: { id: appointmentId },
-          include: { lawyer: { include: { user: { select: { name: true } } } } },
-        });
-        if (appointment) {
-          appointmentLabel = `${appointment.lawyer.user.name} on ${formatPaidAt(appointment.startsAt)}`;
-        }
-      }
+      const linkedAppointmentId = typeof meta['appointmentId'] === 'string' ? meta['appointmentId'] : null;
+      const appointment = await resolveAppointmentForPayment(
+        tx as unknown as Parameters<typeof resolveAppointmentForPayment>[0],
+        {
+          clientId: payment.clientId,
+          appointmentId: linkedAppointmentId,
+        },
+      );
 
       const conversation = await tx.conversation.findFirst({
         where: { clientId: payment.clientId },
@@ -129,6 +223,10 @@ export class PaymentReceiptHandler implements DomainEventHandler {
           ? `Case ${payment.case.reference}${payment.case.matterType ? ` (${payment.case.matterType})` : ''}`
           : 'legal services');
 
+      const appointmentLabel = appointment
+        ? `${appointment.lawyerName} on ${formatAppointmentDateTime(appointment.startsAt)}`
+        : undefined;
+
       return {
         clientId: payment.clientId,
         caseId: payment.caseId ?? undefined,
@@ -140,11 +238,71 @@ export class PaymentReceiptHandler implements DomainEventHandler {
         paidAt: payment.paidAt ?? new Date(),
         workLabel,
         appointmentLabel,
+        appointment,
         caseReference: payment.case?.reference,
         conversationId: conversation.id,
       };
     });
   }
+}
+
+export async function resolveAppointmentForPayment(
+  tx: {
+    appointment: {
+      findFirst: (args: Record<string, unknown>) => Promise<{
+        id: string;
+        clientId: string;
+        lawyerId: string;
+        caseId: string | null;
+        startsAt: Date;
+        endsAt: Date;
+        status: string;
+        location: string | null;
+        notes: string | null;
+        reminderSentAt: Date | null;
+        lawyer: { user: { name: string } };
+        client: { name: string | null; waPhone: string };
+      } | null>;
+    };
+  },
+  input: { clientId: string; appointmentId: string | null },
+): Promise<ResolvedAppointment | null> {
+  const include = {
+    lawyer: { include: { user: { select: { name: true } } } },
+    client: { select: { name: true, waPhone: true } },
+  };
+
+  const row = input.appointmentId
+    ? await tx.appointment.findFirst({
+        where: { id: input.appointmentId, clientId: input.clientId },
+        include,
+      })
+    : await tx.appointment.findFirst({
+        where: {
+          clientId: input.clientId,
+          status: { in: ['CONFIRMED', 'PENDING'] },
+          startsAt: { gte: new Date() },
+        },
+        orderBy: { startsAt: 'asc' },
+        include,
+      });
+
+  if (!row) return null;
+  return {
+    id: row.id,
+    clientId: row.clientId,
+    clientName: row.client.name,
+    clientWaPhone: row.client.waPhone,
+    lawyerId: row.lawyerId,
+    lawyerName: row.lawyer.user.name,
+    caseId: row.caseId,
+    startsAt: row.startsAt,
+    endsAt: row.endsAt,
+    status: row.status,
+    location: row.location,
+    notes: row.notes,
+    reminderSentAt: row.reminderSentAt,
+  };
 }
 
 export function createPaymentReceiptHandlers(handler: PaymentReceiptHandler): DomainEventHandler[] {
@@ -161,6 +319,7 @@ function humanizeMethod(method: string): string {
 
 function formatPaidAt(date: Date): string {
   return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Karachi',
     weekday: 'short',
     year: 'numeric',
     month: 'short',

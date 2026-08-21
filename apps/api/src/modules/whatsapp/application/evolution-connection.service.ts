@@ -27,6 +27,8 @@ export interface WhatsappConnectionStatus {
 export class EvolutionConnectionService {
   private readonly logger = new Logger(EvolutionConnectionService.name);
   private readonly webhooksEnsured = new Set<string>();
+  /** Evolution reconnects Baileys whenever settings include wavoipToken — apply once. */
+  private readonly wavoipSettingsEnsured = new Set<string>();
 
   constructor(
     private readonly config: ConfigService<Env, true>,
@@ -77,6 +79,10 @@ export class EvolutionConnectionService {
 
       if (live.status === 'connected') {
         void this.ensureWebhook(connection.instanceName);
+        // Do NOT re-POST wavoip settings on every status poll — Evolution closes
+        // and reconnects Baileys whenever `wavoipToken` is in the settings body,
+        // which drops CB:call mid-ring and prevents Wavoip from SIP-INVITEing us.
+        void this.ensureWavoipSettingsOnce(connection.instanceName, connection.connectionType);
       }
 
       // QR rotations arrive via the QRCODE_UPDATED webhook (Evolution owns
@@ -117,7 +123,7 @@ export class EvolutionConnectionService {
           displayName: existing.displayName ?? null,
         });
         await this.configureWebhook(instanceName);
-        await this.evolution.setInstanceSettings(instanceName).catch(() => {});
+        await this.applyWavoipSettings(instanceName, connectionType);
         return {
           instanceName,
           connectionType,
@@ -141,7 +147,7 @@ export class EvolutionConnectionService {
       });
 
       try {
-        await this.evolution.createInstance(instanceName, connectionType);
+        await this.evolution.createInstance(instanceName, connectionType, this.baileysWavoipToken(connectionType));
       } catch (error) {
         const message = error instanceof Error ? error.message : '';
         const alreadyExists =
@@ -154,7 +160,7 @@ export class EvolutionConnectionService {
         }
       }
       await this.configureWebhook(instanceName);
-      await this.evolution.setInstanceSettings(instanceName).catch(() => {});
+      await this.applyWavoipSettings(instanceName, connectionType);
 
       const live = await this.evolution.connectInstance(instanceName);
       await this.connections.upsert(tx, tenantId, {
@@ -190,6 +196,8 @@ export class EvolutionConnectionService {
       }
 
       this.qrStore.clear(instanceName);
+      this.webhooksEnsured.delete(instanceName);
+      this.wavoipSettingsEnsured.delete(instanceName);
       if (connection) {
         await this.connections.remove(tx, tenantId);
       }
@@ -203,6 +211,35 @@ export class EvolutionConnectionService {
         qrCode: null,
       };
     });
+  }
+
+  private baileysWavoipToken(connectionType: EvolutionConnectionType): string | undefined {
+    if (connectionType !== 'baileys') return undefined;
+    return this.config.get('WAVOIP_TOKEN', { infer: true });
+  }
+
+  private async ensureWavoipSettingsOnce(
+    instanceName: string,
+    connectionType: EvolutionConnectionType,
+  ): Promise<void> {
+    if (this.wavoipSettingsEnsured.has(instanceName)) return;
+    await this.applyWavoipSettings(instanceName, connectionType);
+  }
+
+  private async applyWavoipSettings(
+    instanceName: string,
+    connectionType: EvolutionConnectionType,
+  ): Promise<void> {
+    const token = this.baileysWavoipToken(connectionType);
+    try {
+      await this.evolution.setInstanceSettings(instanceName, token);
+      this.wavoipSettingsEnsured.add(instanceName);
+    } catch (error: unknown) {
+      this.logger.warn(
+        { instance: instanceName, err: error instanceof Error ? error.message : 'settings' },
+        'could not apply WhatsApp call settings to Evolution',
+      );
+    }
   }
 
   private defaultInstanceName(tenantId: string): string {

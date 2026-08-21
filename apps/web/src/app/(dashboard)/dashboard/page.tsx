@@ -71,6 +71,14 @@ export default function OverviewPage() {
   const canReadAnalytics = can('analytics:read');
   const canReadPayments = can('payments:read');
   const canManageFirm = can('users:manage');
+  const isOwner = Boolean(session?.isOwner || canManageFirm);
+  const isLawyer = session?.role === 'Lawyer';
+  const isStaff = session?.role === 'Staff';
+  const overviewSummary = isStaff
+    ? t('staffOverviewSummary')
+    : isLawyer
+      ? t('lawyerOverviewSummary')
+      : t('firmOverviewSummary');
   const metrics = useQuery({
     queryKey: ['analytics', 'dashboard'],
     queryFn: () => apiRequest('/v1/analytics/dashboard', { schema: dashboardMetricsSchema }),
@@ -112,6 +120,13 @@ export default function OverviewPage() {
     queryFn: () => apiRequest('/v1/inbox?state=HUMAN_REQUIRED', { schema: inboxListSchema }),
     retry: false,
     refetchInterval: INBOX_POLL_MS,
+  });
+  const myInbox = useQuery({
+    queryKey: ['inbox', 'overview', 'assignedToMe'],
+    queryFn: () => apiRequest('/v1/inbox?assignedToMe=true', { schema: inboxListSchema }),
+    retry: false,
+    refetchInterval: INBOX_POLL_MS,
+    enabled: !isOwner && can('inbox:read'),
   });
   const openEscalations = useQuery({
     queryKey: ['escalations', 'OPEN'],
@@ -159,8 +174,10 @@ export default function OverviewPage() {
 
   const firmName = profile.data?.displayName ?? profile.data?.firmName ?? t('yourFirm');
   const connected = (whatsapp.data?.status ?? 'disconnected') === 'connected';
+  const whatsappCtaHref = connected || !canManageFirm ? '/dashboard/whatsapp' : '/dashboard/setup';
   const firmComplete = Boolean(profile.data?.firmName && profile.data?.city && profile.data?.practiceAreas.length);
   const waitingCount = inbox.data?.length ?? 0;
+  const myQueueCount = myInbox.data?.length ?? 0;
   const escalationCount = openEscalations.data?.length ?? 0;
   const series = daily.data ?? [];
   const aiHandled7d = series.reduce((acc, p) => acc + p.aiHandled, 0);
@@ -184,6 +201,16 @@ export default function OverviewPage() {
   const greeting = hour < 12 ? t('goodMorning') : hour < 17 ? t('goodAfternoon') : t('goodEvening');
 
   const kpiCards = [
+    {
+      title: t('assignedToMe'),
+      value: myInbox.isSuccess ? String(myQueueCount) : undefined,
+      detail: t('assignedToMeDetail'),
+      spark: undefined as number[] | undefined,
+      icon: Inbox,
+      href: '/dashboard/inbox?tab=ME',
+      isPending: myInbox.isPending,
+      visible: !isOwner,
+    },
     {
       title: t('newConversations7d'),
       value: metrics.data ? String(metrics.data.newLeads7d) : undefined,
@@ -238,16 +265,45 @@ export default function OverviewPage() {
     <div className="space-y-6">
       <PageHeader
         title={`${greeting}, ${firstName}`}
-        description={`${firmName} · ${t('firmOverviewSummary')}`}
+        description={`${firmName} · ${overviewSummary}`}
         action={
-          <Button nativeButton={false} variant="outline" render={<Link href={connected ? '/dashboard/whatsapp' : '/dashboard/setup'} />}>
+          <Button nativeButton={false} variant="outline" render={<Link href={whatsappCtaHref} />}>
             <MessageCircleMore className="me-2 h-4 w-4" />
-            {connected ? t('manageWhatsapp') : t('connectWhatsapp')}
+            {connected ? t('manageWhatsapp') : canManageFirm ? t('connectWhatsapp') : t('whatsappStatus')}
           </Button>
         }
       />
 
-      <AiControls canManage={canManageFirm} />
+      {!isStaff ? <AiControls canManage={canManageFirm} /> : null}
+
+      {!isOwner ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('yourWorkQueue')}</CardTitle>
+            <CardDescription>{t('yourWorkQueueDesc')}</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button nativeButton={false} size="sm" render={<Link href="/dashboard/inbox?tab=ME" />}>
+              <Inbox className="h-4 w-4" />
+              {t('openAssignedInbox')}
+              {myQueueCount > 0 ? <Badge className="ms-1">{myQueueCount}</Badge> : null}
+            </Button>
+            <Button nativeButton={false} size="sm" variant="outline" render={<Link href="/dashboard/inbox?tab=HUMAN_REQUIRED" />}>
+              <AlertTriangle className="h-4 w-4" />
+              {t('needsHuman')}
+              {waitingCount > 0 ? <Badge variant="destructive" className="ms-1">{waitingCount}</Badge> : null}
+            </Button>
+            <Button nativeButton={false} size="sm" variant="outline" render={<Link href="/dashboard/escalations" />}>
+              {t('escalations')}
+              {escalationCount > 0 ? <Badge variant="secondary" className="ms-1">{escalationCount}</Badge> : null}
+            </Button>
+            <Button nativeButton={false} size="sm" variant="outline" render={<Link href="/dashboard/calendar" />}>
+              <Clock3 className="h-4 w-4" />
+              {t('calendar')}
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {canReadAnalytics && metrics.isError ? (
         <p role="alert" className="text-sm text-destructive">
@@ -288,33 +344,44 @@ export default function OverviewPage() {
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
               <div>
-                <CardTitle>{t('priorityInbox')}</CardTitle>
-                <CardDescription>{t('conversationsWaiting')}</CardDescription>
+                <CardTitle>{isOwner ? t('priorityInbox') : t('assignedToMe')}</CardTitle>
+                <CardDescription>
+                  {isOwner ? t('conversationsWaiting') : t('assignedToMeDetail')}
+                </CardDescription>
               </div>
-              {waitingCount > 0 ? <Badge variant="destructive">{waitingCount} {t('waiting')}</Badge> : null}
+              {(isOwner ? waitingCount : myQueueCount) > 0 ? (
+                <Badge variant="destructive">
+                  {isOwner ? waitingCount : myQueueCount} {t('waiting')}
+                </Badge>
+              ) : null}
             </div>
           </CardHeader>
           <CardContent className="space-y-1">
-            {inbox.isPending ? (
+            {(isOwner ? inbox.isPending : myInbox.isPending) ? (
               <div className="space-y-2" aria-busy="true" aria-label={t('loadingInbox')}>
                 {Array.from({ length: 4 }, (_, i) => (
                   <Skeleton key={i} className="h-12 w-full" />
                 ))}
               </div>
             ) : null}
-            {inbox.isError ? (
+            {(isOwner ? inbox.isError : myInbox.isError) ? (
               <p role="alert" className="text-sm text-muted-foreground">
                 {t('couldntLoadInbox')}{' '}
                 <Link href="/dashboard/inbox" className="underline">{t('openFullInbox')}</Link>
               </p>
             ) : null}
-            {inbox.isSuccess && waitingCount === 0 ? (
+            {(isOwner ? inbox.isSuccess && waitingCount === 0 : myInbox.isSuccess && myQueueCount === 0) ? (
               <p className="py-6 text-center text-sm text-muted-foreground">
-                {connected ? t('nothingWaiting') : t('connectWhatsappForInbox')}
+                {connected
+                  ? isOwner
+                    ? t('nothingWaiting')
+                    : t('nothingAssignedToYou')
+                  : t('connectWhatsappForInbox')}
               </p>
             ) : null}
-            {inbox.isSuccess && waitingCount > 0
-              ? inbox.data.slice(0, 5).map((conversation) => (
+            {(isOwner ? inbox.data : myInbox.data)
+              ?.slice(0, 5)
+              .map((conversation) => (
                   <Link
                     key={conversation.id}
                     href={`/dashboard/inbox?conversation=${conversation.id}`}
@@ -339,10 +406,14 @@ export default function OverviewPage() {
                     <Badge variant="destructive">{humanizeEnum(conversation.state)}</Badge>
                   </Link>
                 ))
-              : null}
-            {waitingCount > 0 ? (
+              }
+            {(isOwner ? waitingCount : myQueueCount) > 0 ? (
               <div className="pt-2">
-                <Button nativeButton={false} size="sm" render={<Link href="/dashboard/inbox" />}>
+                <Button
+                  nativeButton={false}
+                  size="sm"
+                  render={<Link href={isOwner ? '/dashboard/inbox' : '/dashboard/inbox?tab=ME'} />}
+                >
                   {t('openFullInbox')}
                 </Button>
               </div>
@@ -455,6 +526,7 @@ export default function OverviewPage() {
         </Card>
         ) : null}
 
+        {isOwner || isLawyer ? (
         <div className="space-y-6">
           <Card>
             <CardHeader>
@@ -479,9 +551,10 @@ export default function OverviewPage() {
             </CardContent>
           </Card>
         </div>
+        ) : null}
       </div>
 
-      {!connected ? (
+      {!connected && canManageFirm ? (
         <Card className="border-primary/20 bg-primary/5 ring-primary/20">
           <CardContent className="flex flex-col gap-4 pt-4 sm:flex-row sm:items-center sm:justify-between">
             <div>

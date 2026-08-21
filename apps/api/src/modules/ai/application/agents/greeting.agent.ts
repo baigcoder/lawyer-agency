@@ -6,7 +6,7 @@ import { AiLoggerService } from '../../infrastructure/ai-logger.service';
 import type { AgentResult, Language } from '../../domain/types';
 import type { AiRunContext } from '../ai-context.types';
 import { mergePromptVariables, renderGreetingMessage } from '../ai-prompt-variables';
-import { isShortGreeting } from '../dynamic-reply-rules';
+import { isUnusableVoiceTranscript } from '../fast-route';
 import { MODEL_ROUTER, PROMPT_REPOSITORY, type ModelRouter, type PromptRepository } from '../ports';
 
 const greetingSchema = z.looseObject({
@@ -33,8 +33,12 @@ export class GreetingAgent {
     correlationId?: string | null | undefined;
   }): Promise<AgentResult> {
     const fallbackText = renderGreetingMessage(params.context, params.language);
-    if (params.context.isFirstClientTurn && isShortGreeting(params.clientText)) {
-      return { responseText: fallbackText, languageDetected: params.language, citations: [] };
+    if (isUnusableVoiceTranscript(params.clientText)) {
+      return {
+        responseText: unheardVoiceNoteMessage(params.language),
+        languageDetected: params.language,
+        citations: [],
+      };
     }
 
     try {
@@ -72,7 +76,7 @@ export class GreetingAgent {
         model: choice.model,
         promptVersionId: prompt.id,
         correlationId: params.correlationId,
-        temperature: 0.4,
+        temperature: 0.55,
         maxTokens: 220,
         timeoutMs: 12_000,
       });
@@ -100,7 +104,7 @@ export class GreetingAgent {
 }
 
 const defaultGreetingPrompt = `You reply on WhatsApp for {{displayName}} in {{city}}.
-Tone: {{aiTone}}.
+Talk like a normal person texting — warm, short, everyday words. Tone: {{aiTone}}.
 
 {{dynamicReplyRules}}
 
@@ -109,15 +113,24 @@ Real-case rules:
 
 Owner instructions: {{aiCustomInstructions}}
 
-Prior conversation:
+Prior conversation (include spoken/voice-note turns):
 {{conversationHistory}}
 
 The client sent a greeting or very short opener. Write ONE natural WhatsApp reply (1–2 sentences) that:
 - Matches their language/script ({{language}}). Roman Urdu stays Roman Urdu.
-- Uses "{{displayName}}" as the firm name
+- Reacts to the exact words they just said (including a voice-note transcript)
+- Sounds like a receptionist, not a website
+- Does NOT say you are an AI/assistant (that line is added separately)
 - Does NOT list practice areas or give a firm brochure
 - Invites them to say what they need in one short question
 
 Return JSON: { "responseText": string }
 
 Client message: {{clientText}}`;
+
+function unheardVoiceNoteMessage(language: Language): string {
+  if (language === 'EN') {
+    return "Sorry, I couldn't catch that voice note. Can you say it again or type it?";
+  }
+  return 'معاف کیجیے، وائس نوٹ سمجھ نہیں آیا۔ دوبارہ بولیں یا لکھ دیں۔';
+}

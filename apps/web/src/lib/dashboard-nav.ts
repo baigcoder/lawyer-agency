@@ -42,7 +42,7 @@ export const dashboardNavSections: DashboardNavSection[] = [
     key: 'groupManage',
     items: [
       { href: '/dashboard/cases', key: 'cases', icon: FolderOpen, permission: 'cases:read' },
-      { href: '/dashboard/documents', key: 'documents', icon: FileText, permission: 'cases:read' },
+      { href: '/dashboard/documents', key: 'documents', icon: FileText, permission: 'cases:write' },
       { href: '/dashboard/knowledge', key: 'knowledge', icon: BookOpen, permission: 'knowledge-base:read' },
       { href: '/dashboard/calendar', key: 'calendar', icon: CalendarDays, permission: 'appointments:read' },
       { href: '/dashboard/team', key: 'team', icon: Users, permission: 'users:read' },

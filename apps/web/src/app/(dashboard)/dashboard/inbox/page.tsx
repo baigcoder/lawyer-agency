@@ -33,12 +33,25 @@ const tabs: Array<{ labelKey: TranslationKey; value: InboxTabValue }> = [
 
 function InboxContent() {
   const { t } = useLanguage();
-  const { can } = useSession();
+  const { can, session } = useSession();
   const canManageWhatsapp = can('whatsapp:manage');
   const searchParams = useSearchParams();
   const conversationFromUrl = searchParams.get('conversation');
+  const tabFromUrl = searchParams.get('tab');
+  const defaultTab: InboxTabValue =
+    tabFromUrl === 'ME' ||
+    tabFromUrl === 'UNASSIGNED' ||
+    tabFromUrl === 'ALL' ||
+    tabFromUrl === 'AI_ACTIVE' ||
+    tabFromUrl === 'HUMAN_REQUIRED' ||
+    tabFromUrl === 'HUMAN_ACTIVE' ||
+    tabFromUrl === 'CLOSED'
+      ? tabFromUrl
+      : session?.role === 'Staff' || session?.role === 'Lawyer'
+        ? 'ME'
+        : 'HUMAN_REQUIRED';
   const [selectedId, setSelectedId] = useState<string | null>(conversationFromUrl);
-  const [activeTab, setActiveTab] = useState<InboxTabValue>('ALL');
+  const [activeTab, setActiveTab] = useState<InboxTabValue>(defaultTab);
   const [search, setSearch] = useState('');
 
   const [syncedParam, setSyncedParam] = useState<string | null>(conversationFromUrl);

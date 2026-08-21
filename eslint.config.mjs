@@ -11,7 +11,7 @@ import tseslint from 'typescript-eslint';
 const MODULES = [
   'auth', 'users', 'lawyers', 'cases', 'messages', 'whatsapp', 'ai',
   'rag', 'documents', 'appointments', 'payments', 'notifications',
-  'analytics', 'audit',
+  'analytics', 'audit', 'voice', 'voice-calls',
 ];
 
 // Sibling access is allowed ONLY to a module's module file (DI wiring) and

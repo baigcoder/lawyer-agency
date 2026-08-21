@@ -23,11 +23,13 @@
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
     "@supabase/supabase-js": "^2.112.3",
+    "@vexyl.ai/sip": "^1.0.4",
     "@whiskeysockets/baileys": "^7.0.0-rc14",
     "bullmq": "^6.0.11",
     "ioredis": "^5.11.1",
     "mammoth": "^1.12.1",
     "nestjs-pino": "^4.6.1",
+    "opusscript": "^0.1.1",
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^2.4.5",
     "pg": "^8.16.3",
@@ -36,6 +38,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "web-push": "^3.6.7",
+    "werift": "^0.24.4",
     "zod": "^4.4.3"
   },
   "devDependencies": {

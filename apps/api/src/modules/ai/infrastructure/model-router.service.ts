@@ -57,17 +57,33 @@ const CATALOG: Record<string, ModelChoice & Pricing> = {
     input: 0,
     output: 0,
   },
+  'groq/openai/gpt-oss-120b': {
+    provider: 'openai',
+    model: 'openai/gpt-oss-120b',
+    inputCostPer1kTokens: 0,
+    outputCostPer1kTokens: 0,
+    input: 0.000001,
+    output: 0.000001,
+  },
+  'openai/gpt-oss-120b': {
+    provider: 'openai',
+    model: 'openai/gpt-oss-120b',
+    inputCostPer1kTokens: 0,
+    outputCostPer1kTokens: 0,
+    input: 0.000001,
+    output: 0.000001,
+  },
 };
 
 const AGENT_DEFAULTS: Record<string, string> = {
   router: 'groq/openai/gpt-oss-20b',
-  intake: 'groq/openai/gpt-oss-20b',
-  faq: 'groq/openai/gpt-oss-20b',
-  'case-update': 'groq/openai/gpt-oss-20b',
+  intake: 'groq/openai/gpt-oss-120b',
+  faq: 'groq/openai/gpt-oss-120b',
+  'case-update': 'groq/openai/gpt-oss-120b',
   escalation: 'groq/openai/gpt-oss-20b',
-  greeting: 'groq/openai/gpt-oss-20b',
-  'greeting-intro': 'groq/openai/gpt-oss-20b',
-  'handoff-brief': 'groq/openai/gpt-oss-20b',
+  greeting: 'groq/openai/gpt-oss-120b',
+  'greeting-intro': 'groq/openai/gpt-oss-120b',
+  'handoff-brief': 'groq/openai/gpt-oss-120b',
 };
 
 /**
@@ -84,22 +100,23 @@ export class ModelRouterService implements ModelRouter {
 
   choose(agent: string, tenantId: string, tenantAllowlist: string[]): ModelChoice {
     const preferred = AGENT_DEFAULTS[agent] ?? this.defaultKey();
-    const allowed = tenantAllowlist.length > 0 ? tenantAllowlist : Object.keys(CATALOG);
+    const allowedKeys = tenantAllowlist.length > 0 ? tenantAllowlist : Object.keys(CATALOG);
+    const preferredEntry = CATALOG[preferred];
+    if (preferredEntry && allowedKeys.includes(preferred)) {
+      return toChoice(preferredEntry);
+    }
 
-    // Prefer the agent default if allowed; otherwise pick cheapest allowed.
-    const candidates = allowed
+    const candidates = allowedKeys
       .map((k) => CATALOG[k])
       .filter((c): c is (ModelChoice & Pricing) => c !== undefined)
       .sort((a, b) => a.input + a.output - (b.input + b.output));
 
-    const chosen = candidates.find((c) => `${c.provider}/${c.model}` === preferred) ?? candidates[0];
+    const chosen =
+      candidates.find((c) => c.model === preferredEntry?.model) ??
+      candidates.find((c) => `${c.provider}/${c.model}` === preferred) ??
+      candidates[0];
     if (!chosen) throw new Error(`No allowed AI model for tenant ${tenantId}`);
-    return {
-      provider: chosen.provider,
-      model: chosen.model,
-      inputCostPer1kTokens: chosen.inputCostPer1kTokens,
-      outputCostPer1kTokens: chosen.outputCostPer1kTokens,
-    };
+    return toChoice(chosen);
   }
 
   async checkBudget(tenantId: string, estimatedCostMicros: number): Promise<boolean> {
@@ -125,4 +142,13 @@ export class ModelRouterService implements ModelRouter {
     const model = this.config.get('AI_DEFAULT_MODEL', { infer: true });
     return `${provider}/${model}`;
   }
+}
+
+function toChoice(entry: ModelChoice & Pricing): ModelChoice {
+  return {
+    provider: entry.provider,
+    model: entry.model,
+    inputCostPer1kTokens: entry.inputCostPer1kTokens,
+    outputCostPer1kTokens: entry.outputCostPer1kTokens,
+  };
 }

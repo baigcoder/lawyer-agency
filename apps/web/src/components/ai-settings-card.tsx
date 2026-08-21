@@ -27,15 +27,9 @@ import {
 import { firmProfileSchema } from '@/lib/schemas/firm-profile';
 import { cn } from '@/lib/utils';
 
-const toneOptions = [
-  { value: 'friendly', label: 'Friendly' },
-  { value: 'formal', label: 'Formal' },
-  { value: 'concise', label: 'Concise' },
-] as const;
-
 const DEFAULT_PREVIEW_VOICE = {
-  female: 'FGY2WhTYpPnrIDTdsKH5',
-  male: 'JBFqnCBsd6RMkjVDRZzb',
+  female: { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura' },
+  male: { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George' },
 } as const;
 
 export function AiSettingsCard() {
@@ -87,8 +81,13 @@ export function AiSettingsCard() {
   });
 
   const previewVoice = useMutation({
-    mutationFn: (input: { voiceId: string; language: 'en' | 'ur' }) =>
-      apiRequest('/v1/voice/preview', { method: 'POST', body: input, schema: voicePreviewSchema }),
+    mutationFn: (input: {
+      voiceId: string;
+      language: 'en' | 'ur';
+      voiceGender: 'male' | 'female';
+      tone: AiSettings['aiTone'];
+      displayName: string;
+    }) => apiRequest('/v1/voice/preview', { method: 'POST', body: input, schema: voicePreviewSchema }),
     onSuccess: (data) => {
       const url = audioSrcFromPreview(data.mimeType, data.audioBase64);
       setPreviewUrl((previous) => {
@@ -120,7 +119,39 @@ export function AiSettingsCard() {
   const previewIntro = (form.watch('aiGreetingIntro') || '').replace(/\{\{displayName\}\}/g, displayName);
   const introIsUrdu = /[\u0600-\u06FF]/.test(previewIntro);
   const selectedVoiceId = form.watch('aiVoiceId');
-  const voiceGender = form.watch('aiVoiceGender');
+  const voiceGender = form.watch('aiVoiceGender') === 'male' ? 'male' : 'female';
+  const allVoices = voices.data?.voices ?? [];
+  const voicesForGender = allVoices.filter(
+    (voice) => voice.gender === voiceGender || voice.gender === 'neutral',
+  );
+  const defaultVoiceMeta = DEFAULT_PREVIEW_VOICE[voiceGender];
+  const defaultVoiceLabel =
+    voicesForGender.find((voice) => voice.gender === voiceGender)?.name ?? defaultVoiceMeta.name;
+
+  const setVoiceGender = (gender: 'male' | 'female') => {
+    form.setValue('aiVoiceGender', gender, { shouldDirty: true });
+    const currentId = form.getValues('aiVoiceId');
+    if (!currentId) return;
+    const selected = allVoices.find((voice) => voice.id === currentId);
+    if (selected && selected.gender !== gender && selected.gender !== 'neutral') {
+      form.setValue('aiVoiceId', '', { shouldDirty: true });
+    }
+  };
+
+  const playPreview = (language: 'en' | 'ur') => {
+    const voiceId =
+      selectedVoiceId ||
+      voicesForGender.find((voice) => voice.gender === voiceGender)?.id ||
+      voicesForGender[0]?.id ||
+      defaultVoiceMeta.id;
+    previewVoice.mutate({
+      voiceId,
+      language,
+      voiceGender,
+      tone: form.getValues('aiTone'),
+      displayName,
+    });
+  };
 
   if (settings.isPending) {
     return (
@@ -144,16 +175,6 @@ export function AiSettingsCard() {
       </Card>
     );
   }
-
-  const playPreview = (language: 'en' | 'ur') => {
-    const gender = voiceGender === 'male' ? 'male' : 'female';
-    const voiceId =
-      selectedVoiceId ||
-      voices.data?.voices.find((voice) => voice.gender === gender)?.id ||
-      voices.data?.voices[0]?.id ||
-      DEFAULT_PREVIEW_VOICE[gender];
-    previewVoice.mutate({ voiceId, language });
-  };
 
   return (
     <Card>
@@ -345,43 +366,44 @@ export function AiSettingsCard() {
             <Textarea
               rows={2}
               {...form.register('aiConsentMessage')}
-              placeholder="Optional custom consent line for the first AI message…"
+              placeholder="I'm {{ownerName}}'s assistant — not {{ownerName}} the lawyer. I'll answer your messages and voice notes. Tell me how I can help."
             />
           </Field>
 
-          <div className="flex items-start justify-between gap-4 rounded-lg border bg-muted/30 p-4">
-            <div className="space-y-0.5">
-              <Label className="text-sm font-medium">{t('aiVoiceReplyEnabled')}</Label>
-              <p className="text-xs text-muted-foreground">{t('aiVoiceReplyEnabledHint')}</p>
-            </div>
-            <Switch
-              checked={form.watch('aiVoiceEnabled')}
-              onCheckedChange={(checked) => {
-                form.setValue('aiVoiceEnabled', checked, { shouldDirty: true });
-                if (checked && form.getValues('aiVoiceReplyMode') === 'text_only') {
-                  form.setValue('aiVoiceReplyMode', 'auto', { shouldDirty: true });
-                }
-              }}
-            />
-          </div>
-
           <div className="space-y-4 rounded-lg border p-4">
             <div>
-              <p className="text-sm font-medium">{t('aiVoiceSelect')}</p>
-              <p className="text-xs text-muted-foreground">{t('aiVoicePreviewHint')}</p>
+              <p className="text-sm font-medium">{t('aiVoiceAssistantSection')}</p>
+              <p className="text-xs text-muted-foreground">{t('aiVoiceAssistantSectionHint')}</p>
             </div>
-            <Field label="Assistant voice" error={form.formState.errors.aiVoiceGender?.message}>
+
+            <div className="flex items-start justify-between gap-4 rounded-lg bg-muted/30 p-3">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-medium">{t('aiVoiceReplyEnabled')}</Label>
+                <p className="text-xs text-muted-foreground">{t('aiVoiceReplyEnabledHint')}</p>
+              </div>
+              <Switch
+                checked={form.watch('aiVoiceEnabled')}
+                onCheckedChange={(checked) => {
+                  form.setValue('aiVoiceEnabled', checked, { shouldDirty: true });
+                  if (checked && form.getValues('aiVoiceReplyMode') === 'text_only') {
+                    form.setValue('aiVoiceReplyMode', 'auto', { shouldDirty: true });
+                  }
+                }}
+              />
+            </div>
+
+            <Field label={t('aiAssistantVoiceGender')} error={form.formState.errors.aiVoiceGender?.message}>
               <div className="flex flex-wrap gap-2">
                 {([
-                  { value: 'female', label: 'Female' },
-                  { value: 'male', label: 'Male' },
-                ] as const).map((opt) => (
+                  { value: 'female' as const, label: t('aiVoiceFemale') },
+                  { value: 'male' as const, label: t('aiVoiceMale') },
+                ]).map((opt) => (
                   <Button
                     key={opt.value}
                     type="button"
                     size="sm"
-                    variant={form.watch('aiVoiceGender') === opt.value ? 'default' : 'outline'}
-                    onClick={() => form.setValue('aiVoiceGender', opt.value, { shouldDirty: true })}
+                    variant={voiceGender === opt.value ? 'default' : 'outline'}
+                    onClick={() => setVoiceGender(opt.value)}
                   >
                     {opt.label}
                   </Button>
@@ -398,7 +420,7 @@ export function AiSettingsCard() {
                     return;
                   }
                   form.setValue('aiVoiceId', value, { shouldDirty: true });
-                  const voice = voices.data?.voices.find((item) => item.id === value);
+                  const voice = allVoices.find((item) => item.id === value);
                   if (voice?.gender === 'male' || voice?.gender === 'female') {
                     form.setValue('aiVoiceGender', voice.gender, { shouldDirty: true });
                   }
@@ -409,58 +431,87 @@ export function AiSettingsCard() {
                   <SelectValue placeholder={t('aiDefaultVoice')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="default">{t('aiDefaultVoice')}</SelectItem>
-                  {(voices.data?.voices ?? []).map((voice) => (
+                  <SelectItem value="default">
+                    {t('aiDefaultVoiceNamed').replace('{name}', defaultVoiceLabel)}
+                  </SelectItem>
+                  {voicesForGender.map((voice) => (
                     <SelectItem key={voice.id} value={voice.id}>
-                      {voice.name} · {voice.gender} · {voice.accent}
+                      {voice.name} · {voice.accent}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </Field>
 
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={previewVoice.isPending || voices.isPending}
-                onClick={() => playPreview('en')}
-              >
-                {previewVoice.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Volume2 className="h-4 w-4" />}
-                {t('aiPreviewEn')}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={previewVoice.isPending || voices.isPending}
-                onClick={() => playPreview('ur')}
-              >
-                {previewVoice.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Volume2 className="h-4 w-4" />}
-                {t('aiPreviewUr')}
-              </Button>
-            </div>
-            {previewUrl ? (
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-muted-foreground">{t('aiVoicePreviewPlayer')}</p>
-                <audio ref={playerRef} src={previewUrl} controls preload="auto" className="w-full max-w-md" />
+            <Field label={t('aiToneLabel')} hint={t('aiToneHint')} error={form.formState.errors.aiTone?.message}>
+              <div className="flex flex-wrap gap-2">
+                {([
+                  { value: 'friendly' as const, label: t('aiToneFriendly') },
+                  { value: 'formal' as const, label: t('aiToneFormal') },
+                  { value: 'concise' as const, label: t('aiToneConcise') },
+                ]).map((opt) => (
+                  <Button
+                    key={opt.value}
+                    type="button"
+                    size="sm"
+                    variant={form.watch('aiTone') === opt.value ? 'default' : 'outline'}
+                    onClick={() => form.setValue('aiTone', opt.value, { shouldDirty: true })}
+                  >
+                    {opt.label}
+                  </Button>
+                ))}
               </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">{t('aiVoicePreviewEmpty')}</p>
-            )}
-            {voices.data && !voices.data.configured ? (
-              <p className="text-xs text-muted-foreground">{t('aiElevenLabsMissing')}</p>
-            ) : null}
+            </Field>
+
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">{t('aiVoicePreviewHint')}</p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={previewVoice.isPending || voices.isPending}
+                  onClick={() => playPreview('en')}
+                >
+                  {previewVoice.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Volume2 className="h-4 w-4" />}
+                  {t('aiPreviewEn')}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={previewVoice.isPending || voices.isPending}
+                  onClick={() => playPreview('ur')}
+                >
+                  {previewVoice.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Volume2 className="h-4 w-4" />}
+                  {t('aiPreviewUr')}
+                </Button>
+              </div>
+              {previewUrl ? (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">{t('aiVoicePreviewPlayer')}</p>
+                  <audio ref={playerRef} src={previewUrl} controls preload="auto" className="w-full max-w-md" />
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">{t('aiVoicePreviewEmpty')}</p>
+              )}
+              {voices.data && !voices.data.configured ? (
+                <p className="text-xs text-muted-foreground">{t('aiElevenLabsMissing')}</p>
+              ) : null}
+            </div>
 
             {form.watch('aiVoiceEnabled') ? (
-              <Field label="Voice reply mode" error={form.formState.errors.aiVoiceReplyMode?.message}>
+              <Field
+                label={t('aiVoiceReplyModeLabel')}
+                hint={t('aiVoiceReplyModeAutoHint')}
+                error={form.formState.errors.aiVoiceReplyMode?.message}
+              >
                 <div className="flex flex-wrap gap-2">
                   {([
-                    { value: 'auto', label: 'Auto (voice when client sent voice)' },
-                    { value: 'voice_only', label: 'Always voice' },
-                    { value: 'text_only', label: 'Text only' },
-                  ] as const).map((opt) => (
+                    { value: 'auto' as const, label: t('aiVoiceReplyModeAuto') },
+                    { value: 'voice_only' as const, label: t('aiVoiceReplyModeVoiceOnly') },
+                    { value: 'text_only' as const, label: t('aiVoiceReplyModeTextOnly') },
+                  ]).map((opt) => (
                     <Button
                       key={opt.value}
                       type="button"
@@ -476,21 +527,35 @@ export function AiSettingsCard() {
             ) : null}
           </div>
 
-          <Field label="Tone" error={form.formState.errors.aiTone?.message}>
-            <div className="flex flex-wrap gap-2">
-              {toneOptions.map((opt) => (
-                <Button
-                  key={opt.value}
-                  type="button"
-                  size="sm"
-                  variant={form.watch('aiTone') === opt.value ? 'default' : 'outline'}
-                  onClick={() => form.setValue('aiTone', opt.value, { shouldDirty: true })}
-                >
-                  {opt.label}
-                </Button>
-              ))}
+          <div className="space-y-4 rounded-lg border p-4">
+            <div>
+              <p className="text-sm font-medium">{t('aiLiveCallsSection')}</p>
+              <p className="text-xs text-muted-foreground">{t('aiLiveCallsSectionHint')}</p>
             </div>
-          </Field>
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-medium">{t('aiTakesCalls')}</Label>
+                <p className="text-xs text-muted-foreground">{t('aiTakesCallsHint')}</p>
+              </div>
+              <Switch
+                checked={form.watch('callsTakenBy') === 'ai'}
+                onCheckedChange={(checked) => {
+                  form.setValue('callsTakenBy', checked ? 'ai' : 'off', { shouldDirty: true });
+                }}
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Field label={t('aiCallHoursStart')}>
+                <Input type="time" {...form.register('aiCallHoursStart')} />
+              </Field>
+              <Field label={t('aiCallHoursEnd')}>
+                <Input type="time" {...form.register('aiCallHoursEnd')} />
+              </Field>
+              <Field label={t('aiCallHoursTimezone')} hint={t('aiCallHoursHint')}>
+                <Input {...form.register('aiCallHoursTimezone')} placeholder="Asia/Karachi" />
+              </Field>
+            </div>
+          </div>
 
           <Field
             label="Custom instructions"

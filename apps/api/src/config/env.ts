@@ -9,8 +9,8 @@ const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     API_PORT: z.coerce.number().int().min(1).max(65535).default(3001),
-    // One image, two roles (D-013): api = HTTP, worker = BullMQ consumers.
-    API_ROLE: z.enum(['api', 'worker']).default('api'),
+    // One image, three roles (D-013 / D-124): api = HTTP, worker = BullMQ, voice = live calls.
+    API_ROLE: z.enum(['api', 'worker', 'voice']).default('api'),
 
     // app connects as non-owner app_user (RLS-bound, ADR-002)
     DATABASE_URL: z.url(),
@@ -67,6 +67,8 @@ const envSchema = z
     // AI providers (Phase 7) — optional at boot; model router checks at call time
     OPENAI_API_KEY: z.string().min(1).optional(),
     OPENAI_BASE_URL: z.url().default('https://api.openai.com/v1'),
+    GROQ_API_KEY: z.string().min(1).optional(),
+    GROQ_BASE_URL: z.url().default('https://api.groq.com/openai/v1'),
     ANTHROPIC_API_KEY: z.string().min(1).optional(),
     GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
     AI_DEFAULT_PROVIDER: z.enum(['openai', 'anthropic', 'google']).default('openai'),
@@ -91,6 +93,25 @@ const envSchema = z
     OPENAI_WHISPER_API_KEY: z.string().min(1).optional(),
     OPENAI_WHISPER_BASE_URL: z.url().optional(),
     OPENAI_WHISPER_MODEL: z.string().min(1).optional(),
+
+    // Live WhatsApp Cloud Calling (D-124) — UDP port range published on the voice container
+    // so Meta can reach host ICE candidates. Optional TURN if STUN is not enough.
+    WEBRTC_ICE_PORT_MIN: z.coerce.number().int().min(1024).max(65534).optional(),
+    WEBRTC_ICE_PORT_MAX: z.coerce.number().int().min(1025).max(65535).optional(),
+    WEBRTC_TURN_URL: z.string().min(1).optional(),
+    WEBRTC_TURN_USERNAME: z.string().min(1).optional(),
+    WEBRTC_TURN_CREDENTIAL: z.string().min(1).optional(),
+
+    // QR/Baileys live calls (D-124) — Evolution relays CB:call to Wavoip.
+    // Device token is also the SIP trunk user/password/CallerID. The voice
+    // process REGISTERs at WAVOIP_SIP_HOST and answers G.711 INVITEs.
+    WAVOIP_TOKEN: z.string().min(1).optional(),
+    WAVOIP_SIP_HOST: z.string().min(1).default('sipv2.wavoip.com'),
+    WAVOIP_SIP_PORT: z.coerce.number().int().min(1).max(65535).default(5060),
+    WAVOIP_SIP_USER: z.string().min(1).optional(),
+    WAVOIP_SIP_PASSWORD: z.string().min(1).optional(),
+    // Public IP/DNS for SIP Contact/Via when the voice process is behind NAT.
+    WAVOIP_SIP_CONTACT_HOST: z.string().min(1).optional(),
 
     // Observability (D-016)
     OTEL_EXPORTER_OTLP_ENDPOINT: z.url().optional(),

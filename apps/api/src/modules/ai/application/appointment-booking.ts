@@ -86,7 +86,7 @@ export function formatSlotOffer(
   const lines = slots.map((slot, index) => `${index + 1}) ${formatSlotWhen(slot.startsAt, language)}`);
   if (language === 'UR') {
     return [
-      `${lawyerName} کے ساتھ ملاقات کے لیے یہ اوقات دستیاب ہیں — 1، 2 یا 3 کا جواب دیں:`,
+      `${lawyerName} کے ساتھ ملاقات کے لیے یہ اوقات دستیاب ہیں۔ 1، 2 یا 3 کا جواب دیں:`,
       ...lines,
     ].join('\n');
   }
@@ -95,7 +95,7 @@ export function formatSlotOffer(
 
 export function formatNoSlots(language: Language): string {
   if (language === 'UR') {
-    return 'اس ہفتے کوئی خالی وقت نہیں ہے۔ اگر آپ وکیل سے بات کرنا چاہیں تو لکھیں — میں پیغام بھیج دوں گی/گا۔';
+    return 'اس ہفتے کوئی خالی وقت نہیں ہے۔ اگر آپ وکیل سے بات کرنا چاہیں تو لکھیں، میں پیغام بھیج دوں گی۔';
   }
   return 'There are no open slots this week. Reply if you want to speak with a lawyer and I will pass your message on.';
 }

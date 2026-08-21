@@ -18,6 +18,11 @@ export interface UserSummary {
   createdAt: Date;
 }
 
+/** Returned after invite/resend — never includes credentials (emailed by Clerk). */
+export interface InviteUserResult extends UserSummary {
+  emailDelivery: 'sent' | 'skipped';
+}
+
 export interface UserDetail extends UserSummary {
   clerkUserId: string;
   isLawyer: boolean;
@@ -123,7 +128,8 @@ export class UsersService {
     tenantId: string,
     input: InviteUserInput,
     inviterClerkUserId?: string,
-  ): Promise<UserSummary> {
+  ): Promise<InviteUserResult> {
+    const email = normalizeEmail(input.email);
     const prepared = await this.uow.withTenant(tenantId, async (tx) => {
       await this.auth.seedSystemRoles(tx, tenantId);
 
@@ -133,12 +139,12 @@ export class UsersService {
       }
 
       const duplicate = await tx.user.findFirst({
-        where: { email: { equals: input.email, mode: 'insensitive' } },
+        where: { email: { equals: email, mode: 'insensitive' } },
         include: { role: true },
       });
       const tenant = await tx.tenant.findUnique({
         where: { id: tenantId },
-        select: { clerkOrgId: true },
+        select: { clerkOrgId: true, name: true },
       });
       const clerkRole = role.name === 'Admin' ? ('org:admin' as const) : ('org:member' as const);
 
@@ -146,9 +152,11 @@ export class UsersService {
         if (duplicate.status === 'INVITED') {
           return {
             user: toSummary(duplicate),
+            userId: duplicate.id,
             clerkOrgId: tenant?.clerkOrgId ?? null,
             clerkRole,
-            resent: true,
+            roleLabel: role.name,
+            name: input.name.trim() || duplicate.name,
           };
         }
         throw new ConflictException('A user with this email is already on the team');
@@ -159,9 +167,9 @@ export class UsersService {
           tenantId,
           clerkUserId: input.clerkUserId ?? `invite_${randomUUID()}`,
           roleId: input.roleId,
-          name: input.name,
-          email: input.email,
-          phone: input.phone ?? null,
+          name: input.name.trim(),
+          email,
+          phone: input.phone?.trim() || null,
           status: 'INVITED',
         },
         include: { role: true },
@@ -174,17 +182,30 @@ export class UsersService {
 
       return {
         user: toSummary(created),
+        userId: created.id,
         clerkOrgId: tenant?.clerkOrgId ?? null,
         clerkRole,
-        resent: false,
+        roleLabel: role.name,
+        name: created.name,
       };
     });
 
-    await this.sendClerkInvite(prepared.clerkOrgId, prepared.user.email, prepared.clerkRole, inviterClerkUserId);
-    return prepared.user;
+    const invite = await this.sendClerkInvite({
+      clerkOrgId: prepared.clerkOrgId,
+      email: prepared.user.email,
+      name: prepared.name,
+      role: prepared.clerkRole,
+      roleLabel: prepared.roleLabel,
+      ...(inviterClerkUserId ? { inviterUserId: inviterClerkUserId } : {}),
+    });
+
+    return {
+      ...prepared.user,
+      emailDelivery: invite.emailDelivery,
+    };
   }
 
-  async resendInvite(tenantId: string, userId: string, inviterClerkUserId?: string): Promise<UserSummary> {
+  async resendInvite(tenantId: string, userId: string, inviterClerkUserId?: string): Promise<InviteUserResult> {
     const prepared = await this.uow.withTenant(tenantId, async (tx) => {
       const current = await tx.user.findFirst({
         where: { id: userId },
@@ -200,34 +221,66 @@ export class UsersService {
       });
       return {
         user: toSummary(current),
+        userId: current.id,
         clerkOrgId: tenant?.clerkOrgId ?? null,
         clerkRole: current.role.name === 'Admin' ? ('org:admin' as const) : ('org:member' as const),
+        roleLabel: current.role.name,
+        name: current.name,
       };
     });
 
-    await this.sendClerkInvite(prepared.clerkOrgId, prepared.user.email, prepared.clerkRole, inviterClerkUserId);
-    return prepared.user;
+    const invite = await this.sendClerkInvite({
+      clerkOrgId: prepared.clerkOrgId,
+      email: prepared.user.email,
+      name: prepared.name,
+      role: prepared.clerkRole,
+      roleLabel: prepared.roleLabel,
+      ...(inviterClerkUserId ? { inviterUserId: inviterClerkUserId } : {}),
+    });
+
+    return {
+      ...prepared.user,
+      emailDelivery: invite.emailDelivery,
+    };
   }
 
-  private async sendClerkInvite(
-    clerkOrgId: string | null,
-    email: string,
-    role: 'org:member' | 'org:admin',
-    inviterUserId?: string,
-  ): Promise<void> {
-    if (!clerkOrgId) return;
+  private async sendClerkInvite(input: {
+    clerkOrgId: string | null;
+    email: string;
+    name: string;
+    role: 'org:member' | 'org:admin';
+    roleLabel: string;
+    inviterUserId?: string;
+  }): Promise<{ emailDelivery: 'sent' | 'skipped' }> {
+    if (!this.orgInviter.invitationsEnabled) {
+      return this.orgInviter.inviteMember({
+        clerkOrgId: input.clerkOrgId ?? 'dev-org',
+        email: input.email,
+        name: input.name,
+        role: input.role,
+        roleLabel: input.roleLabel,
+      });
+    }
+    if (!input.clerkOrgId) {
+      throw new BadRequestException(
+        'This firm is not linked to a Clerk organization, so invites cannot be emailed. Finish firm setup, then try again.',
+      );
+    }
     const clerkInviterId =
-      inviterUserId && !inviterUserId.startsWith('invite_') ? inviterUserId : undefined;
+      input.inviterUserId && !input.inviterUserId.startsWith('invite_') ? input.inviterUserId : undefined;
     try {
-      await this.orgInviter.inviteMember({
-        clerkOrgId,
-        email,
-        role,
+      return await this.orgInviter.inviteMember({
+        clerkOrgId: input.clerkOrgId,
+        email: normalizeEmail(input.email),
+        name: input.name,
+        role: input.role,
+        roleLabel: input.roleLabel,
         ...(clerkInviterId ? { inviterUserId: clerkInviterId } : {}),
       });
-    } catch {
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Clerk invitation failed';
       throw new BadGatewayException(
-        'Could not send the Clerk organization invitation. Check the email and try again.',
+        `Could not email the team invitation (${detail}). Check the email address and that Organizations are enabled in Clerk.`,
       );
     }
   }
@@ -316,4 +369,7 @@ function toSummary(user: {
     status: user.status,
     createdAt: user.createdAt,
   };
+}
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
 }

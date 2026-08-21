@@ -102,6 +102,33 @@ export class MasterRouterService {
   }
 }
 
+export function languageFromSttCode(code: string | null | undefined): Language | null {
+  if (!code) return null;
+  const normalized = code.toLowerCase();
+  if (normalized === 'ur' || normalized === 'urd' || normalized.startsWith('ur')) return 'UR';
+  if (normalized === 'en' || normalized === 'eng' || normalized.startsWith('en')) return 'EN';
+  return null;
+}
+
+export function languageFromTranscript(
+  text: string,
+  clientLanguages: string[],
+  sttLanguage?: string | null,
+): Language {
+  const fromStt = languageFromSttCode(sttLanguage);
+  if (fromStt === 'UR') return 'UR';
+  const detected = detectLanguage(text, clientLanguages);
+  if (detected === 'UR') return 'UR';
+  return fromStt ?? detected;
+}
+
+export function languageForUnusableVoiceNote(clientLanguages: string[]): Language {
+  if (clientLanguages.includes('EN') && !clientLanguages.includes('UR') && !clientLanguages.includes('ROMAN_URDU')) {
+    return 'EN';
+  }
+  return 'UR';
+}
+
 export function detectLanguage(text: string, clientLanguages: string[]): Language {
   const urduRange = /[\u0600-\u06FF]/;
   if (urduRange.test(text)) return 'UR';
@@ -133,6 +160,14 @@ export function detectLanguage(text: string, clientLanguages: string[]): Languag
     'kitni',
     'kab',
     'kahan',
+    'raha',
+    'rahi',
+    'rahe',
+    'khana',
+    'karo',
+    'suno',
+    'awaz',
+    'ustad',
   ];
   const allowRoman = clientLanguages.includes('ROMAN_URDU') || clientLanguages.includes('UR');
   if (allowRoman && romanUrduHints.some((w) => new RegExp(`\\b${w}\\b`, 'i').test(lower))) {

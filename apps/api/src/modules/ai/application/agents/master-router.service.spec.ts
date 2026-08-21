@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { MasterRouterService } from './master-router.service';
+import {
+  detectLanguage,
+  languageForUnusableVoiceNote,
+  languageFromTranscript,
+  MasterRouterService,
+} from './master-router.service';
 import { AiClientFactory } from '../../infrastructure/ai-client.factory';
 import { AiLoggerService } from '../../infrastructure/ai-logger.service';
 import type { AiClient, ModelRouter, PromptRepository } from '../../application/ports';
@@ -48,6 +53,13 @@ describe('MasterRouterService', () => {
     expect(result.language).toBe('EN');
   });
 
+  it('treats STT urd as Urdu even when the transcript is Latin', () => {
+    expect(languageFromTranscript('hello', ['EN', 'UR'], 'urd')).toBe('UR');
+    expect(languageFromTranscript('مجھے مدد چاہیے', ['EN'], 'eng')).toBe('UR');
+    expect(languageForUnusableVoiceNote(['EN', 'UR'])).toBe('UR');
+    expect(languageForUnusableVoiceNote(['EN'])).toBe('EN');
+  });
+
   it('detects Urdu language', async () => {
     const { service } = makeService({ output: { intent: 'FAQ', reasoning: 'Urdu question', confidence: 0.8 } });
     const result = await service.route({
@@ -71,6 +83,7 @@ describe('MasterRouterService', () => {
       clientLanguages: ['EN', 'UR'],
     });
     expect(result.language).toBe('UR');
+    expect(detectLanguage('Khana kha raha', ['EN', 'UR'])).toBe('UR');
   });
 
   it('forces human handoff when budget exhausted', async () => {

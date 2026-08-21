@@ -5,6 +5,8 @@ import { DocumentsModule } from '../documents/documents.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { SPEECH_TO_TEXT } from './application/speech-to-text.port';
 import { TEXT_TO_SPEECH } from './application/text-to-speech.port';
+import { CompositeSttClient } from './infrastructure/composite-stt.client';
+import { ElevenLabsSttClient } from './infrastructure/elevenlabs-stt.client';
 import { OpenAiWhisperClient } from './infrastructure/openai-whisper.client';
 import { ElevenLabsTtsClient } from './infrastructure/elevenlabs-tts.client';
 import { WhatsappMediaProcessor } from './application/whatsapp-media.processor';
@@ -25,7 +27,9 @@ export class VoiceModule {
       ],
       controllers: role === 'api' ? [VoiceController] : [],
       providers: [
-        { provide: SPEECH_TO_TEXT, useClass: OpenAiWhisperClient },
+        OpenAiWhisperClient,
+        ElevenLabsSttClient,
+        { provide: SPEECH_TO_TEXT, useClass: CompositeSttClient },
         { provide: TEXT_TO_SPEECH, useClass: ElevenLabsTtsClient },
         VoiceReplyService,
         ...(role === 'api' ? [VoicePreviewService] : []),

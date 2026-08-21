@@ -26,4 +26,11 @@ export const env = envSchema.parse({
   NEXT_PUBLIC_LEGAL_CONTACT_EMAIL: process.env.NEXT_PUBLIC_LEGAL_CONTACT_EMAIL,
 });
 
-export const clerkEnabled = env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY !== undefined;
+function isLiveClerkPublishableKey(value: string | undefined): boolean {
+  if (!value) return false;
+  const trimmed = value.trim();
+  if (!trimmed || /replace/i.test(trimmed)) return false;
+  return trimmed.startsWith('pk_test_') || trimmed.startsWith('pk_live_');
+}
+
+export const clerkEnabled = isLiveClerkPublishableKey(env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);

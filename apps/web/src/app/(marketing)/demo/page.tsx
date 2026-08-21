@@ -134,10 +134,15 @@ export default function DemoDashboardPage() {
           <div className="flex items-center gap-2">
             <ThemeToggle />
             <LanguageToggle />
-            <Button variant="outline" size="sm" render={<Link href="/dashboard" />}>
+            <Button
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              render={<Link href="/dashboard" />}
+            >
               Sign in
             </Button>
-            <Button size="sm" render={<Link href="/dashboard" />}>
+            <Button size="sm" nativeButton={false} render={<Link href="/dashboard" />}>
               Get started
             </Button>
           </div>
@@ -153,11 +158,11 @@ export default function DemoDashboardPage() {
               description="This is exactly what your team sees — a calm, complete view of your firm. Wakeel turns WhatsApp conversations into structured intake, safe AI handoffs, and clear follow-up actions."
               action={
                 <div className="flex gap-2">
-                  <Button size="sm" render={<Link href="/sign-in" />}>
+                  <Button size="sm" nativeButton={false} render={<Link href="/sign-in" />}>
                     Sign in
                     <ArrowRight className="ms-2 h-4 w-4" aria-hidden />
                   </Button>
-                  <Button variant="outline" size="sm" render={<Link href="/" />}>
+                  <Button variant="outline" size="sm" nativeButton={false} render={<Link href="/" />}>
                     Back
                   </Button>
                 </div>
@@ -414,7 +419,12 @@ function DemoContent() {
             Free pilot, no credit card. This dashboard fills with your real clients in minutes.
           </CardDescription>
           <div className="mt-5 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Button size="lg" variant="secondary" render={<Link href="/dashboard" />}>
+            <Button
+              size="lg"
+              variant="secondary"
+              nativeButton={false}
+              render={<Link href="/dashboard" />}
+            >
               Start onboarding free
               <ArrowRight className="ms-2 h-4 w-4" aria-hidden />
             </Button>
@@ -422,6 +432,7 @@ function DemoContent() {
               size="lg"
               variant="outline"
               className="border-primary-foreground/30 bg-transparent text-primary-foreground hover:bg-primary-foreground/10"
+              nativeButton={false}
               render={<Link href="/" />}
             >
               Back to home

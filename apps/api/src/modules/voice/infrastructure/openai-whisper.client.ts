@@ -13,9 +13,13 @@ export class OpenAiWhisperClient implements SpeechToTextPort {
     this.runtime = resolveWhisperConfig(config);
   }
 
+  isConfigured(): boolean {
+    return Boolean(this.runtime);
+  }
+
   async transcribe(input: TranscribeInput): Promise<TranscribeResult> {
     if (!this.runtime) {
-      throw new Error('Speech-to-text is not configured (set OPENAI_API_KEY or OPENAI_WHISPER_API_KEY)');
+      throw new Error('Speech-to-text is not configured (set GROQ_API_KEY or OPENAI_API_KEY)');
     }
 
     const form = new FormData();
@@ -30,7 +34,7 @@ export class OpenAiWhisperClient implements SpeechToTextPort {
       method: 'POST',
       headers: { authorization: `Bearer ${this.runtime.apiKey}` },
       body: form,
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(20_000),
     });
 
     if (!response.ok) {

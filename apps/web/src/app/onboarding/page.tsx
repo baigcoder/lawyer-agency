@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { CreateOrganization, useAuth, useOrganization, useOrganizationList } from '@clerk/nextjs';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { Building2, Check, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
@@ -45,14 +45,36 @@ function ClerkOnboarding() {
   const { isLoaded: listLoaded, setActive, userMemberships } = useOrganizationList({
     userMemberships: { infinite: true },
   });
+  const { getToken, orgRole, isLoaded: authLoaded } = useAuth();
+  const router = useRouter();
   const existingOrgId = userMemberships.data?.[0]?.organization.id;
+
+  const status = useQuery({
+    queryKey: ['firm-provisioning', 'status', organization?.id],
+    enabled: Boolean(organization?.id) && authLoaded,
+    queryFn: async () => {
+      const token = await getToken();
+      if (!token) return { provisioned: false, tenantId: null as string | null };
+      return apiRequest('/v1/firm-provisioning/status', {
+        token,
+        schema: z.object({ provisioned: z.boolean(), tenantId: z.string().nullable() }),
+      });
+    },
+    retry: false,
+  });
 
   useEffect(() => {
     if (!listLoaded || organization || !existingOrgId) return;
     void setActive({ organization: existingOrgId });
   }, [existingOrgId, listLoaded, organization, setActive]);
 
-  if (!orgLoaded || !listLoaded || userMemberships.isLoading) {
+  useEffect(() => {
+    if (status.data?.provisioned) {
+      router.replace('/dashboard');
+    }
+  }, [status.data?.provisioned, router]);
+
+  if (!orgLoaded || !listLoaded || !authLoaded || userMemberships.isLoading) {
     return (
       <main id="main" className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin" />
@@ -82,6 +104,36 @@ function ClerkOnboarding() {
           </CardHeader>
           <CardContent>
             <CreateOrganization skipInvitationScreen afterCreateOrganizationUrl="/onboarding" />
+          </CardContent>
+        </Card>
+      </main>
+    );
+  }
+
+  if (status.isPending || status.data?.provisioned) {
+    return (
+      <main id="main" className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin" />
+      </main>
+    );
+  }
+
+  // Invited members join a firm that the owner must finish setting up.
+  const isOrgAdmin = orgRole === 'org:admin' || orgRole === 'admin';
+  if (!isOrgAdmin) {
+    return (
+      <main id="main" className="flex min-h-screen items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Waiting for firm setup</CardTitle>
+            <CardDescription>
+              You joined {organization.name}. Ask the firm owner to finish Wakeel setup, then refresh this page.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button type="button" variant="outline" onClick={() => status.refetch()}>
+              Check again
+            </Button>
           </CardContent>
         </Card>
       </main>

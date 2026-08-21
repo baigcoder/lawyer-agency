@@ -8,6 +8,7 @@ import { PaymentReceiptHandler, createPaymentReceiptHandlers } from './applicati
 import { FirmProfileModule } from '../firm-profile/firm-profile.module';
 import { WhatsappPortsModule } from '../whatsapp/whatsapp-ports.module';
 import { DocumentsModule } from '../documents/documents.module';
+import { AppointmentsModule } from '../appointments/appointments.module';
 import { StubRailAdapter } from './infrastructure/stub-rail.adapter';
 import { PAYMENT_RAILS } from './application/ports';
 
@@ -26,6 +27,7 @@ export class PaymentsModule {
       imports: [
         FirmProfileModule,
         WhatsappPortsModule,
+        AppointmentsModule,
         ...(role === 'worker' ? [DocumentsModule.register('worker')] : []),
       ],
       controllers: role === 'api' ? [PaymentsController] : [],

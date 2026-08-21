@@ -6,7 +6,9 @@ import { OutboxWriter } from '../../../common/events/outbox-writer';
 import { SendService } from '../../whatsapp/application/send.service';
 import { VoiceReplyService } from '../../voice/application/voice-reply.service';
 import { RETRIEVER, type Retriever } from '../../rag/application/retriever.port';
-import { detectLanguage, MasterRouterService } from './agents/master-router.service';
+import { matchPakistanLawyerKnowledge } from '../../rag/application/pakistan-lawyer-knowledge';
+import { PakistanKbSeedService } from '../../rag/application/pakistan-kb-seed.service';
+import { detectLanguage, languageForUnusableVoiceNote, languageFromTranscript, MasterRouterService } from './agents/master-router.service';
 import { IntakeAgent } from './agents/intake.agent';
 import { FaqAgent } from './agents/faq.agent';
 import { CaseUpdateAgent } from './agents/case-update.agent';
@@ -23,8 +25,9 @@ import {
 import { applyReplyLanguagePolicy } from './reply-language';
 import { applyFirmScopeIntent, isCasualOffTopic } from './firm-scope';
 import { isShortGreeting } from './dynamic-reply-rules';
+import { rewriteMissingAnswerReply } from './missing-answer-reply';
 import { shouldSendAiReply } from './ai-send-policy';
-import { fastRoute, isAppointmentAsk } from './fast-route';
+import { fastRoute, isAppointmentAsk, isUnusableVoiceTranscript } from './fast-route';
 import { mergeIntakeFields } from './intake-fields';
 import { selectRelevantChunks } from './retrieved-chunks';
 import { PaymentInstructionService } from '../../payments/application/payment-instruction.service';
@@ -72,6 +75,8 @@ type OrchestratorSend =
       conversationId: string;
       toWaPhone: string;
       handoffText: string;
+      language: Language;
+      inboundContentType: string;
       escalationId: string;
       caseId: string | null;
       conversationHistory: string;
@@ -105,6 +110,10 @@ function asFieldRecord(value: unknown): Record<string, unknown> {
   return {};
 }
 
+function isHardHandoff(triggerType: string, intent: AgentIntent): boolean {
+  return intent === 'HUMAN_HANDOFF' || triggerType !== 'MANUAL';
+}
+
 /**
  * Main AI orchestrator (Phase 7). Triggered by the `message.inbound.received`
  * domain event, it:
@@ -136,6 +145,7 @@ export class AiOrchestratorService {
     private readonly contextBuilder: AiContextBuilder,
     private readonly escalationAssignment: EscalationAssignmentService,
     @Inject(RETRIEVER) private readonly retriever: Retriever,
+    private readonly pakistanKb: PakistanKbSeedService,
     private readonly paymentInstructions: PaymentInstructionService,
     private readonly slots: SlotFinderService,
     private readonly appointments: AppointmentsService,
@@ -162,14 +172,20 @@ export class AiOrchestratorService {
       if (!message || message.direction !== 'INBOUND') return { kind: 'none' };
 
       const clientText = message.body ?? '';
+      const inboundPayload = asFieldRecord(message.payload);
+      const sttLanguage =
+        typeof inboundPayload['transcriptLanguage'] === 'string' ? inboundPayload['transcriptLanguage'] : null;
       const tenant = await tx.tenant.findUnique({ where: { id: params.tenantId }, select: { aiProviderAllowlist: true } });
       const allowlist = tenant?.aiProviderAllowlist ?? [];
       const likelyNeedsRag = !isShortGreeting(clientText) && !isCasualOffTopic(clientText);
+      if (likelyNeedsRag) {
+        this.pakistanKb.ensureForTenantInBackground(params.tenantId);
+      }
       const retrievalPromise = likelyNeedsRag
         ? this.retriever.search({
             tenantId: params.tenantId,
             query: clientText,
-            language: detectLanguage(clientText, ['EN', 'UR', 'ROMAN_URDU']),
+            language: languageFromTranscript(clientText, ['EN', 'UR', 'ROMAN_URDU'], sttLanguage),
             topK: 6,
             clientId: conversation.clientId,
             caseId: conversation.caseId ?? undefined,
@@ -182,7 +198,10 @@ export class AiOrchestratorService {
         tx,
         retrievedChunks: [],
       });
-      const retrievedChunks = selectRelevantChunks(await retrievalPromise);
+      const retrievedChunks = selectRelevantChunks([
+        ...(await retrievalPromise),
+        ...(likelyNeedsRag ? matchPakistanLawyerKnowledge(clientText) : []),
+      ]);
       context.retrievedChunks = retrievedChunks;
       context.retrievedContext = formatRetrievedContext(retrievedChunks);
 
@@ -205,21 +224,42 @@ export class AiOrchestratorService {
               intent: heuristic.intent,
               reasoning: heuristic.reasoning,
               confidence: heuristic.confidence,
-              language: detectLanguage(clientText, context.firm.clientLanguages),
+              language: languageFromTranscript(clientText, context.firm.clientLanguages, sttLanguage),
             })
-          : this.router.route({
-              tenantId: params.tenantId,
-              tenantAllowlist: allowlist,
-              clientText,
-              conversationState: conversation.state,
-              hasOpenCase: !!conversation.caseId,
-              clientLanguages: context.firm.clientLanguages,
-              conversationHistory: context.conversationHistory,
-              correlationId: params.correlationId,
-            }),
+          : this.router
+              .route({
+                tenantId: params.tenantId,
+                tenantAllowlist: allowlist,
+                clientText,
+                conversationState: conversation.state,
+                hasOpenCase: !!conversation.caseId,
+                clientLanguages: context.firm.clientLanguages,
+                conversationHistory: context.conversationHistory,
+                correlationId: params.correlationId,
+              })
+              .catch((error: unknown) => {
+                this.logger.warn(
+                  { err: error instanceof Error ? error.message : 'router' },
+                  'router LLM failed — using heuristic',
+                );
+                const fallback = heuristic ?? {
+                  intent: 'GREETING' as const,
+                  reasoning: 'router unavailable',
+                  confidence: 0.5,
+                };
+                return {
+                  intent: fallback.intent,
+                  reasoning: fallback.reasoning,
+                  confidence: fallback.confidence,
+                  language: languageFromTranscript(clientText, context.firm.clientLanguages, sttLanguage),
+                };
+              }),
       ]);
 
-      const language = applyReplyLanguagePolicy(route.language, context.aiSettings);
+      const detected = isUnusableVoiceTranscript(clientText)
+        ? languageForUnusableVoiceNote(context.firm.clientLanguages)
+        : languageFromTranscript(clientText, context.firm.clientLanguages, sttLanguage);
+      const language = applyReplyLanguagePolicy(detected, context.aiSettings);
       let intent: AgentIntent = escalation
         ? 'HUMAN_HANDOFF'
         : applyFirmScopeIntent(route.intent, clientText, context.aiSettings);
@@ -247,6 +287,19 @@ export class AiOrchestratorService {
             conversation,
             correlationId: params.correlationId,
             escalation,
+          }).catch((error: unknown): AgentResult => {
+            this.logger.warn(
+              { err: error instanceof Error ? error.message : 'agent' },
+              'agent LLM failed — using spoken fallback',
+            );
+            return {
+              responseText:
+                language === 'UR'
+                  ? 'میں نے آپ کی بات سن لی۔ براہ کرم بتائیں آپ کو کس قانونی معاملے میں مدد چاہیے؟'
+                  : 'I heard you. What legal matter can we help with?',
+              languageDetected: language,
+              citations: [],
+            };
           });
       const effectiveEscalation =
         escalation ??
@@ -260,7 +313,8 @@ export class AiOrchestratorService {
       const responseText = renderFirstTurnDisclosure(
         context,
         language,
-        agentResult.responseText,
+        rewriteMissingAnswerReply(agentResult.responseText, language),
+        message.contentType === 'AUDIO' ? 'voice' : 'text',
       );
 
       await tx.message.update({
@@ -293,7 +347,12 @@ export class AiOrchestratorService {
         }
       }
 
-      if (effectiveEscalation) {
+      const openEscalation = await tx.escalation.findFirst({
+        where: { conversationId: params.conversationId, status: 'OPEN' },
+        select: { id: true },
+      });
+
+      if (effectiveEscalation && !openEscalation) {
         const practiceArea =
           (agentResult.intakeFields?.['practiceArea'] as string | undefined) ??
           (context.intakeFields['practiceArea'] as string | undefined);
@@ -341,13 +400,12 @@ export class AiOrchestratorService {
             ),
           },
         });
-        await tx.conversation.update({
-          where: { id: params.conversationId },
-          data: {
-            state: 'HUMAN_REQUIRED',
-            ...(assigneeUserId ? { assignedToId: assigneeUserId } : {}),
-          },
-        });
+        if (assigneeUserId) {
+          await tx.conversation.update({
+            where: { id: params.conversationId },
+            data: { assignedToId: assigneeUserId },
+          });
+        }
         if (conversation.caseId) {
           await tx.case.update({
             where: { id: conversation.caseId },
@@ -360,32 +418,39 @@ export class AiOrchestratorService {
           triggerType: effectiveEscalation.triggerType,
         });
 
-        return {
-          kind: 'handoff',
-          conversationId: params.conversationId,
-          toWaPhone: conversation.client.waPhone,
-          handoffText: renderFirstTurnDisclosure(
-            context,
+        if (isHardHandoff(effectiveEscalation.triggerType, intent)) {
+          await tx.conversation.update({
+            where: { id: params.conversationId },
+            data: {
+              state: 'HUMAN_REQUIRED',
+              ...(assigneeUserId ? { assignedToId: assigneeUserId } : {}),
+            },
+          });
+          return {
+            kind: 'handoff',
+            conversationId: params.conversationId,
+            toWaPhone: conversation.client.waPhone,
+            handoffText: renderFirstTurnDisclosure(
+              context,
+              language,
+              renderHandoffMessage(context, language),
+              message.contentType === 'AUDIO' ? 'voice' : 'text',
+            ),
             language,
-            renderHandoffMessage(context, language),
-          ),
-          escalationId: created.id,
-          caseId: conversation.caseId,
-          conversationHistory: context.conversationHistory,
-          handoffBrief,
-          tenantAllowlist: allowlist,
-        };
+            inboundContentType: message.contentType,
+            escalationId: created.id,
+            caseId: conversation.caseId,
+            conversationHistory: context.conversationHistory,
+            handoffBrief,
+            tenantAllowlist: allowlist,
+          };
+        }
       }
-
-      const openEscalation = await tx.escalation.findFirst({
-        where: { conversationId: params.conversationId, status: 'OPEN' },
-        select: { id: true },
-      });
 
       if (
         !shouldSendAiReply({
           conversationState: conversation.state,
-          hasOpenEscalation: !!openEscalation,
+          hasOpenEscalation: Boolean(openEscalation),
           responseText,
         })
       ) {
@@ -438,17 +503,13 @@ export class AiOrchestratorService {
     }
 
     if (outcome.kind === 'handoff') {
-      await this.send.send(params.tenantId, {
+      await this.voiceReply.sendAiReply({
+        tenantId: params.tenantId,
         conversationId: outcome.conversationId,
         toWaPhone: outcome.toWaPhone,
-        senderType: 'AI',
-        kind: 'text',
-        body: outcome.handoffText,
-      });
-      await this.uow.withTenant(params.tenantId, async (tx) => {
-        await this.outbox.append(tx, params.tenantId, DOMAIN_EVENTS.AiReplySent, {
-          conversationId: outcome.conversationId,
-        });
+        responseText: outcome.handoffText,
+        language: outcome.language,
+        inboundContentType: outcome.inboundContentType,
       });
       await this.enrichHandoffSituation(params.tenantId, params.correlationId, outcome);
     }

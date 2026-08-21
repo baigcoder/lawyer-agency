@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -27,6 +28,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { apiRequest, ApiError } from '@/lib/api-client';
 import { useLanguage } from '@/lib/language';
+import { useSession } from '@/lib/session';
 import { PageHeader } from '@/components/page-header';
 import { CalendarConnectionCard } from '@/components/calendar-connection-card';
 import {
@@ -97,9 +99,16 @@ function formatTime(d: Date): string {
 
 export default function CalendarPage() {
   const { t } = useLanguage();
+  const { can } = useSession();
+  const canBook = can('appointments:manage');
+  const searchParams = useSearchParams();
+  const focusAppointmentId = searchParams.get('appointmentId');
+  const focusDateParam = searchParams.get('date');
+
   const [monthStart, setMonthStart] = useState(() => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1);
+    const seed = focusDateParam ? new Date(focusDateParam) : new Date();
+    const base = Number.isNaN(seed.getTime()) ? new Date() : seed;
+    return new Date(base.getFullYear(), base.getMonth(), 1);
   });
 
   const { from, to } = useMemo(() => monthRange(monthStart), [monthStart]);
@@ -114,7 +123,23 @@ export default function CalendarPage() {
 
   const [bookOpen, setBookOpen] = useState(false);
   const [bookDate, setBookDate] = useState<Date | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(focusAppointmentId);
+
+  useEffect(() => {
+    if (!focusAppointmentId || !appointmentsQuery.data) return;
+    const hit = appointmentsQuery.data.find((a) => a.id === focusAppointmentId);
+    if (!hit) return;
+    setSelectedId(hit.id);
+    const start = new Date(hit.startsAt);
+    setMonthStart(new Date(start.getFullYear(), start.getMonth(), 1));
+  }, [focusAppointmentId, appointmentsQuery.data]);
+
+  useEffect(() => {
+    if (!focusDateParam || focusAppointmentId) return;
+    const seed = new Date(focusDateParam);
+    if (Number.isNaN(seed.getTime())) return;
+    setMonthStart(new Date(seed.getFullYear(), seed.getMonth(), 1));
+  }, [focusDateParam, focusAppointmentId]);
 
   const selected = appointmentsQuery.data?.find((a) => a.id === selectedId) ?? null;
 
@@ -161,10 +186,12 @@ export default function CalendarPage() {
       <Card className="p-4">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-semibold">{monthLabel}</h2>
-          <Button size="sm" onClick={() => { setBookDate(new Date()); setBookOpen(true); }}>
-            <CalendarDays className="size-4" />
-            {t('bookAppointment')}
-          </Button>
+          {canBook ? (
+            <Button size="sm" onClick={() => { setBookDate(new Date()); setBookOpen(true); }}>
+              <CalendarDays className="size-4" />
+              {t('bookAppointment')}
+            </Button>
+          ) : null}
         </div>
 
         <div className="grid grid-cols-7 gap-1" aria-busy={appointmentsQuery.isPending} aria-label="Calendar grid">
@@ -193,6 +220,7 @@ export default function CalendarPage() {
                     <span className={`text-xs font-medium ${isToday ? 'flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground' : 'text-muted-foreground'}`}>
                       {day.getDate()}
                     </span>
+                    {canBook ? (
                     <Button
                       type="button"
                       variant="ghost"
@@ -203,6 +231,7 @@ export default function CalendarPage() {
                     >
                       <span aria-hidden>+</span>
                     </Button>
+                    ) : null}
                   </div>
                   <div className="flex flex-1 flex-col gap-1 overflow-hidden">
                     {dayAppts.slice(0, 3).map((a) => (
@@ -226,7 +255,7 @@ export default function CalendarPage() {
         </div>
       </Card>
 
-      {bookOpen && bookDate && (
+      {bookOpen && bookDate && canBook && (
         <BookAppointmentDialog
           initialDate={bookDate}
           open={bookOpen}

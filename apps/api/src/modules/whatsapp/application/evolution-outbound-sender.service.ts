@@ -57,14 +57,23 @@ export class EvolutionOutboundSender implements OutboundSender {
       }
 
       if (bodyType === 'audio' && typeof audioBody?.base64 === 'string') {
-        return await this.evolution.sendMedia({
-          instanceName: connection.instanceName,
-          to: params.toWaPhone,
-          media: audioBody.base64,
-          caption: undefined,
-          mediaType: 'audio',
-          mimeType: typeof audioBody.mimeType === 'string' ? audioBody.mimeType : undefined,
-        });
+        try {
+          return await this.evolution.sendWhatsAppAudio({
+            instanceName: connection.instanceName,
+            to: params.toWaPhone,
+            audio: audioBody.base64,
+          });
+        } catch (error) {
+          if (!(error instanceof EvolutionApiError)) throw error;
+          return await this.evolution.sendMedia({
+            instanceName: connection.instanceName,
+            to: params.toWaPhone,
+            media: audioBody.base64,
+            caption: undefined,
+            mediaType: 'audio',
+            mimeType: typeof audioBody.mimeType === 'string' ? audioBody.mimeType : undefined,
+          });
+        }
       }
 
       if (bodyType === 'image' && typeof imageBody?.link === 'string') {

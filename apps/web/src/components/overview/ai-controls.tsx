@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bot, Loader2, MessageSquareText, Mic, Send, Settings as SettingsIcon, Zap } from 'lucide-react';
+import { Bot, Loader2, MessageSquareText, Mic, Phone, Send, Settings as SettingsIcon, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,6 +19,7 @@ type ChannelPatch = {
   aiReply?: boolean;
   chat?: boolean;
   voice?: boolean;
+  callsTakenBy?: 'off' | 'ai';
 };
 
 function isChatOn(settings: AiSettings): boolean {
@@ -45,6 +46,11 @@ function applyAiControlPatch(current: AiSettings, patch: ChannelPatch): AiSettin
   }
   next.aiVoiceEnabled = voiceOn;
   next.aiVoiceReplyMode = voiceOn && !chatOn ? 'voice_only' : voiceOn ? 'auto' : 'text_only';
+  if (patch.callsTakenBy !== undefined) {
+    next.callsTakenBy = patch.callsTakenBy;
+  } else if (patch.voice === true) {
+    next.callsTakenBy = 'ai';
+  }
   return next;
 }
 
@@ -91,21 +97,24 @@ export function AiControls({ canManage }: { canManage: boolean }) {
             </CardTitle>
             <CardDescription>{t('overviewAiControlsDesc')}</CardDescription>
           </div>
-          <Button
-            nativeButton={false}
-            variant="outline"
-            size="sm"
-            render={<Link href="/dashboard/settings#ai" />}
-          >
-            <SettingsIcon className="h-4 w-4" aria-hidden />
-            {t('overviewAiConfigure')}
-          </Button>
+          {canManage ? (
+            <Button
+              nativeButton={false}
+              variant="outline"
+              size="sm"
+              render={<Link href="/dashboard/settings#ai" />}
+            >
+              <SettingsIcon className="h-4 w-4" aria-hidden />
+              {t('overviewAiConfigure')}
+            </Button>
+          ) : null}
         </div>
+        <p className="text-xs text-muted-foreground">{t('overviewAiVoiceSettingsHint')}</p>
       </CardHeader>
       <CardContent>
         {settings.isPending ? (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-busy="true" aria-label={t('overviewAiControls')}>
-            {Array.from({ length: 4 }, (_, i) => (
+            {Array.from({ length: 5 }, (_, i) => (
               <Skeleton key={i} className="h-24 w-full" />
             ))}
           </div>
@@ -116,7 +125,7 @@ export function AiControls({ canManage }: { canManage: boolean }) {
           </p>
         ) : null}
         {settings.data ? (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <AiToggle
               icon={Zap}
               label={t('overviewAiEnable')}
@@ -153,6 +162,16 @@ export function AiControls({ canManage }: { canManage: boolean }) {
               disabled={!canManage || mutation.isPending}
               pending={mutation.isPending}
               onCheckedChange={(checked) => apply({ voice: checked })}
+            />
+            <AiToggle
+              icon={Phone}
+              label={t('overviewAiTakesCalls')}
+              hint={t('overviewAiTakesCallsHint')}
+              checked={settings.data.callsTakenBy === 'ai'}
+              disabled={!canManage || mutation.isPending}
+              pending={mutation.isPending}
+              emphasize={settings.data.callsTakenBy === 'ai'}
+              onCheckedChange={(checked) => apply({ callsTakenBy: checked ? 'ai' : 'off' })}
             />
           </div>
         ) : null}

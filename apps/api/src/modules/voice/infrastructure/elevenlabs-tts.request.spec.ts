@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { URDU_CHAR_LIMIT, URDU_TTS_MODEL, buildElevenLabsTtsBody, resolveTtsLanguage } from './elevenlabs-tts.request';
+import {
+  LIVE_TTS_MODEL,
+  NOTE_TTS_MODEL,
+  URDU_CHAR_LIMIT,
+  buildElevenLabsTtsBody,
+  prepareSpokenTtsText,
+  resolveTtsLanguage,
+} from './elevenlabs-tts.request';
 
 describe('resolveTtsLanguage', () => {
   it('uses the explicit Urdu flag', () => {
@@ -15,27 +22,36 @@ describe('resolveTtsLanguage', () => {
   });
 });
 
+describe('prepareSpokenTtsText', () => {
+  it('strips markdown and adds soft pauses between sentences', () => {
+    expect(prepareSpokenTtsText('**Hello**\n\nHow can I help?')).toBe('Hello. ... How can I help?');
+  });
+});
+
 describe('buildElevenLabsTtsBody', () => {
-  it('uses eleven_v3 and language_code ur for Urdu', () => {
+  it('uses turbo with language_code ur for WhatsApp Urdu notes', () => {
     const body = buildElevenLabsTtsBody({
       text: 'السلام علیکم، میں آپ کی کیسے مدد کر سکتا ہوں؟',
       language: 'ur',
     });
-    expect(body.model_id).toBe(URDU_TTS_MODEL);
+    expect(body.model_id).toBe(NOTE_TTS_MODEL);
     expect(body.language_code).toBe('ur');
     expect(body.apply_text_normalization).toBe('on');
+    expect(body.voice_settings?.style).toBeGreaterThan(0);
+    expect(body.voice_settings?.speed).toBeLessThan(0.9);
   });
 
-  it('keeps multilingual v2 for English without a language_code', () => {
+  it('uses flash for live calls at a calm pace', () => {
     const body = buildElevenLabsTtsBody({
       text: 'How may I help you today?',
       language: 'en',
+      liveCall: true,
     });
-    expect(body.model_id).toBe('eleven_multilingual_v2');
-    expect(body.language_code).toBeUndefined();
+    expect(body.model_id).toBe(LIVE_TTS_MODEL);
+    expect(body.voice_settings?.speed).toBeLessThan(1);
   });
 
-  it('clips Urdu to the v3 character limit', () => {
+  it('clips Urdu to the character limit', () => {
     const body = buildElevenLabsTtsBody({
       text: 'ہاں '.repeat(URDU_CHAR_LIMIT),
       language: 'ur',

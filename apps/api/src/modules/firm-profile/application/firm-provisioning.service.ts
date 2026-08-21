@@ -4,6 +4,7 @@ import type { Prisma } from '../../../generated/prisma/client';
 import { UnitOfWork } from '../../../common/prisma/unit-of-work';
 import { toInputJson } from '../../../common/persistence/json';
 import { AuthService } from '../../auth/application/auth.service';
+import { PakistanKbSeedService } from '../../rag/application/pakistan-kb-seed.service';
 import type { ProvisionFirmInput } from './dto';
 
 export interface ProvisionIdentity {
@@ -28,6 +29,7 @@ export class FirmProvisioningService {
   constructor(
     private readonly uow: UnitOfWork,
     private readonly auth: AuthService,
+    private readonly pakistanKb: PakistanKbSeedService,
   ) {}
 
   async provision(input: ProvisionFirmInput & ProvisionIdentity): Promise<{ tenantId: string }> {
@@ -72,6 +74,7 @@ export class FirmProvisioningService {
         },
       });
     });
+    this.pakistanKb.ensureForTenantInBackground(tenant.id);
     return { tenantId: tenant.id };
   }
 
@@ -101,6 +104,7 @@ export class FirmProvisioningService {
         data: { name: input.firmName, settings: this.mergeSettings(existing.settings, input) },
       });
     });
+    this.pakistanKb.ensureForTenantInBackground(tenantId);
     return { tenantId };
   }
 

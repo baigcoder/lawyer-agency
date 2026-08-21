@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -71,6 +72,7 @@ function paymentDate(p: PaymentDto): Date {
 
 export default function PaymentsPage() {
   const { t } = useLanguage();
+  const router = useRouter();
   const queryClient = useQueryClient();
 
   const form = useForm<PaymentFormValues>({
@@ -170,10 +172,30 @@ export default function PaymentsPage() {
   });
 
   const confirmMutation = useMutation({
-    mutationFn: (id: string) => apiRequest(`/v1/payments/${id}/received`, { method: 'POST' }),
-    onSuccess: () => {
+    mutationFn: (row: PaymentDto) =>
+      apiRequest(`/v1/payments/${row.id}/received`, {
+        method: 'POST',
+        schema: z.object({
+          paymentId: z.string().uuid(),
+          status: z.string(),
+          appointmentId: z.string().uuid().optional(),
+        }),
+      }).then((data) => ({ data, row })),
+    onSuccess: ({ data, row }) => {
       queryClient.invalidateQueries({ queryKey: ['payments'] });
-      toast.success(t('paymentMarkedReceived'));
+      const appointmentId =
+        data.appointmentId ??
+        (typeof row.metadata['appointmentId'] === 'string' ? row.metadata['appointmentId'] : null);
+      if (appointmentId) {
+        toast.success(t('inboxPaymentVerifiedWithCalendar'), {
+          action: {
+            label: t('calendar'),
+            onClick: () => router.push(`/dashboard/calendar?appointmentId=${appointmentId}`),
+          },
+        });
+      } else {
+        toast.success(t('paymentMarkedReceived'));
+      }
     },
     onError: (error) => {
       toast.error(error instanceof ApiError ? error.message : t('paymentMarkFailed'));
@@ -459,12 +481,26 @@ export default function PaymentsPage() {
                           size="sm"
                           variant="outline"
                           className="mr-2"
-                          onClick={() => confirmMutation.mutate(row.id)}
+                          onClick={() => confirmMutation.mutate(row)}
                           disabled={confirmMutation.isPending}
                         >
                           {t('markReceived')}
                         </Button>
                       )}
+                      {typeof row.metadata['appointmentId'] === 'string' ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="mr-2"
+                          onClick={() =>
+                            router.push(
+                              `/dashboard/calendar?appointmentId=${row.metadata['appointmentId'] as string}`,
+                            )
+                          }
+                        >
+                          {t('calendar')}
+                        </Button>
+                      ) : null}
                       {(row.status === 'SUCCEEDED' || row.status === 'RECORDED_MANUAL') && (
                         <Button
                           size="sm"

@@ -11,6 +11,8 @@ export const QUEUES = {
   WHATSAPP_MEDIA: 'whatsapp-media',
   /** Pilot bridge jobs (D-092): pair / send / disconnect via Baileys (worker). */
   WHATSAPP_PILOT: 'whatsapp-pilot',
+  /** Live WhatsApp Cloud Calling sessions (D-124); consumed by API_ROLE=voice. */
+  VOICE_CALLS: 'voice-calls',
   /** Notification jobs and periodic alerting (Phase 9). */
   NOTIFICATIONS: 'notifications',
 } as const;

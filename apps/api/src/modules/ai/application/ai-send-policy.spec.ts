@@ -22,14 +22,14 @@ describe('shouldSendAiReply', () => {
     ).toBe(true);
   });
 
-  it('does not send during an open escalation', () => {
+  it('still replies when an escalation is open until staff takes the chat', () => {
     expect(
       shouldSendAiReply({
         conversationState: 'HUMAN_REQUIRED',
         hasOpenEscalation: true,
         responseText: 'Hello',
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('does not send when staff is actively handling or the chat is closed', () => {

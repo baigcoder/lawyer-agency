@@ -49,7 +49,7 @@ function makeService() {
       findMany: vi.fn(async () => Array.from(roles.values()).map((r) => ({ ...r, isSystem: true }))),
     },
     tenant: {
-      findUnique: vi.fn(async () => ({ clerkOrgId: 'org_1' })),
+      findUnique: vi.fn(async () => ({ clerkOrgId: 'org_1', name: 'Firm' })),
     },
     outboxEvent: { create: vi.fn(async () => ({})) },
   };
@@ -58,7 +58,10 @@ function makeService() {
   } as unknown as UnitOfWork;
   const outbox = { append: vi.fn(async () => undefined) } as unknown as OutboxWriter;
   const auth = { seedSystemRoles: vi.fn(async () => undefined) } as unknown as AuthService;
-  const orgInviter: OrganizationInviter = { inviteMember: vi.fn(async () => undefined) };
+  const orgInviter: OrganizationInviter = {
+    invitationsEnabled: true,
+    inviteMember: vi.fn(async () => ({ emailDelivery: 'sent' as const })),
+  };
   return { service: new UsersService(uow, outbox, auth, orgInviter), tx, users, outbox, orgInviter };
 }
 
@@ -74,7 +77,7 @@ describe('UsersService', () => {
     expect(roles[0]?.name).toBe('Admin');
   });
 
-  it('invites a user and appends UserInvited event', async () => {
+  it('invites a user and emails via Clerk without returning credentials', async () => {
     const { service, tx, outbox, orgInviter } = makeService();
     const created = await service.invite('t1', {
       name: 'Ayesha Khan',
@@ -83,16 +86,22 @@ describe('UsersService', () => {
       clerkUserId: 'clerk-1',
     });
     expect(created.status).toBe('INVITED');
+    expect(created.emailDelivery).toBe('sent');
+    expect(created).not.toHaveProperty('temporaryPassword');
     expect(tx.user.create).toHaveBeenCalledOnce();
     expect(outbox.append).toHaveBeenCalledWith(tx, 't1', 'user.invited', expect.objectContaining({ email: 'ayesha@firm.pk' }));
-    expect(orgInviter.inviteMember).toHaveBeenCalledWith({
-      clerkOrgId: 'org_1',
-      email: 'ayesha@firm.pk',
-      role: 'org:member',
-    });
+    expect(orgInviter.inviteMember).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clerkOrgId: 'org_1',
+        email: 'ayesha@firm.pk',
+        name: 'Ayesha Khan',
+        role: 'org:member',
+        roleLabel: 'Staff',
+      }),
+    );
   });
 
-  it('resends a Clerk invite when the same email is still pending', async () => {
+  it('resends Clerk invite when the same email is still pending', async () => {
     const { service, tx, orgInviter } = makeService();
     await service.invite('t1', {
       name: 'Ayesha Khan',
@@ -106,11 +115,12 @@ describe('UsersService', () => {
       roleId: 'r-staff',
     });
     expect(again.status).toBe('INVITED');
+    expect(again.emailDelivery).toBe('sent');
     expect(tx.user.create).toHaveBeenCalledOnce();
     expect(orgInviter.inviteMember).toHaveBeenCalledTimes(2);
   });
 
-  it('resendInvite sends a Clerk invitation without creating another user', async () => {
+  it('resendInvite emails again without creating another user', async () => {
     const { service, tx, orgInviter } = makeService();
     const created = await service.invite('t1', {
       name: 'Ayesha Khan',
@@ -118,15 +128,16 @@ describe('UsersService', () => {
       roleId: 'r-staff',
       clerkUserId: 'clerk-1',
     });
-    await service.resendInvite('t1', created.id, 'user_owner');
+    const resent = await service.resendInvite('t1', created.id, 'user_owner');
     expect(tx.user.create).toHaveBeenCalledOnce();
     expect(orgInviter.inviteMember).toHaveBeenCalledTimes(2);
-    expect(orgInviter.inviteMember).toHaveBeenLastCalledWith({
-      clerkOrgId: 'org_1',
-      email: 'ayesha@firm.pk',
-      role: 'org:member',
-      inviterUserId: 'user_owner',
-    });
+    expect(resent.emailDelivery).toBe('sent');
+    expect(orgInviter.inviteMember).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        email: 'ayesha@firm.pk',
+        inviterUserId: 'user_owner',
+      }),
+    );
   });
 
   it('keeps the local invited user if Clerk invitation sending fails', async () => {
@@ -136,22 +147,29 @@ describe('UsersService', () => {
     });
     await expect(
       service.invite('t1', { name: 'A', email: 'a@x.com', roleId: 'r-staff', clerkUserId: 'c1' }),
-    ).rejects.toThrow(/Could not send the Clerk organization invitation/);
+    ).rejects.toThrow(/Could not email the team invitation/);
     expect(tx.user.create).toHaveBeenCalledOnce();
   });
 
-  it('skips placeholder invite_ clerk ids when sending the Clerk invitation', async () => {
+  it('rejects Clerk invites when the tenant has no clerkOrgId', async () => {
+    const { service, tx } = makeService();
+    tx.tenant.findUnique = vi.fn(async () => ({ clerkOrgId: null, name: 'Firm' }));
+    await expect(
+      service.invite('t1', { name: 'A', email: 'a@x.com', roleId: 'r-staff', clerkUserId: 'c1' }),
+    ).rejects.toThrow(/not linked to a Clerk organization/);
+  });
+
+  it('normalizes invite email to lowercase', async () => {
     const { service, orgInviter } = makeService();
-    await service.invite(
-      't1',
-      { name: 'A', email: 'a@x.com', roleId: 'r-staff' },
-      'invite_aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
-    );
-    expect(orgInviter.inviteMember).toHaveBeenCalledWith({
-      clerkOrgId: 'org_1',
-      email: 'a@x.com',
-      role: 'org:member',
+    await service.invite('t1', {
+      name: 'Ayesha',
+      email: '  Ayesha@Firm.PK ',
+      roleId: 'r-staff',
+      clerkUserId: 'c1',
     });
+    expect(orgInviter.inviteMember).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'ayesha@firm.pk' }),
+    );
   });
 
   it('lists active users with role names', async () => {

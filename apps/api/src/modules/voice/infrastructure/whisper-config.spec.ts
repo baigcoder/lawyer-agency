@@ -8,14 +8,25 @@ function mockConfig(values: Record<string, string | undefined>) {
 }
 
 describe('resolveWhisperConfig', () => {
-  it('uses whisper-large-v3-turbo on Groq', () => {
+  it('uses whisper-large-v3 on Groq', () => {
+    const cfg = resolveWhisperConfig(
+      mockConfig({
+        GROQ_API_KEY: 'gsk_test',
+        GROQ_BASE_URL: 'https://api.groq.com/openai/v1',
+      }),
+    );
+    expect(cfg?.model).toBe('whisper-large-v3');
+    expect(cfg?.baseUrl).toContain('groq.com');
+  });
+
+  it('uses whisper-large-v3 when OPENAI_BASE_URL is Groq', () => {
     const cfg = resolveWhisperConfig(
       mockConfig({
         OPENAI_API_KEY: 'gsk_test',
         OPENAI_BASE_URL: 'https://api.groq.com/openai/v1',
       }),
     );
-    expect(cfg?.model).toBe('whisper-large-v3-turbo');
+    expect(cfg?.model).toBe('whisper-large-v3');
     expect(cfg?.baseUrl).toContain('groq.com');
   });
 

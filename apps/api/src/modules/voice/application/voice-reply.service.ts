@@ -6,14 +6,14 @@ import { SendService } from '../../whatsapp/application/send.service';
 import { OBJECT_STORAGE, type ObjectStorage } from '../../whatsapp/application/ports';
 import { parseAiSettings } from '../../firm-profile/application/ai-settings.dto';
 import { TEXT_TO_SPEECH, type TextToSpeechPort } from './text-to-speech.port';
-import type { Language } from '../../ai/domain/types';
+import { toWhatsappVoiceNote } from './whatsapp-ptt';
 
 export interface VoiceReplyParams {
   tenantId: string;
   conversationId: string;
   toWaPhone: string;
   responseText: string;
-  language: Language;
+  language: string;
   inboundContentType: string;
 }
 
@@ -35,24 +35,23 @@ export class VoiceReplyService {
       return parseAiSettings(asRecord(tenant?.settings));
     });
 
-    const useVoice = this.shouldUseVoice(settings, params.inboundContentType);
+    const useVoice = shouldUseVoiceReply(settings, params.inboundContentType);
     if (useVoice) {
       try {
         const synthesized = await this.tts.synthesize({
           text: params.responseText,
           voiceGender: settings.aiVoiceGender,
           voiceId: settings.aiVoiceId || undefined,
-          language: params.language === 'UR' ? 'ur' : 'en',
+          language: spokenLanguage(params.language, params.responseText),
         });
-        const audioPath = `tenants/${params.tenantId}/outbound/${Date.now()}.mp3`;
-        try {
-          await this.storage.put(audioPath, synthesized.audioBuffer);
-        } catch (error) {
+        const note = await toWhatsappVoiceNote(synthesized.audioBuffer, synthesized.mimeType);
+        const audioPath = `tenants/${params.tenantId}/outbound/${Date.now()}.ogg`;
+        const stored = this.storage.put(audioPath, note.buffer).catch((error: unknown) => {
           this.logger.warn(
             { conversationId: params.conversationId, error: error instanceof Error ? error.message : String(error) },
             'outbound audio storage failed — sending voice note anyway',
           );
-        }
+        });
 
         await this.send.send(params.tenantId, {
           kind: 'audio',
@@ -60,10 +59,11 @@ export class VoiceReplyService {
           toWaPhone: params.toWaPhone,
           senderType: 'AI',
           body: params.responseText,
-          audioBuffer: synthesized.audioBuffer,
-          mimeType: synthesized.mimeType,
+          audioBuffer: note.buffer,
+          mimeType: note.mimeType,
           audioPath,
         });
+        await stored;
 
         await this.uow.withTenant(params.tenantId, async (tx) => {
           await this.outbox.append(tx, params.tenantId, DOMAIN_EVENTS.AiReplySent, {
@@ -72,7 +72,10 @@ export class VoiceReplyService {
         });
         return;
       } catch (error) {
-        this.logger.warn({ error, conversationId: params.conversationId }, 'voice reply failed — falling back to text');
+        this.logger.warn(
+          { conversationId: params.conversationId, err: error instanceof Error ? error.message : String(error) },
+          'voice reply failed — falling back to text',
+        );
       }
     }
 
@@ -91,15 +94,21 @@ export class VoiceReplyService {
     });
   }
 
-  private shouldUseVoice(
-    settings: ReturnType<typeof parseAiSettings>,
-    inboundContentType: string,
-  ): boolean {
-    if (!settings.aiVoiceEnabled) return false;
-    if (settings.aiVoiceReplyMode === 'text_only') return false;
-    if (settings.aiVoiceReplyMode === 'voice_only') return true;
-    return inboundContentType === 'AUDIO';
-  }
+}
+
+export function shouldUseVoiceReply(
+  settings: ReturnType<typeof parseAiSettings>,
+  inboundContentType?: string,
+): boolean {
+  if (!settings.aiVoiceEnabled) return false;
+  if (settings.aiVoiceReplyMode === 'text_only') return false;
+  if (settings.aiVoiceReplyMode === 'voice_only') return true;
+  return inboundContentType === 'AUDIO';
+}
+
+export function spokenLanguage(language: string, text: string): 'ur' | 'en' {
+  if (language === 'UR' || /[\u0600-\u06FF]/.test(text)) return 'ur';
+  return 'en';
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

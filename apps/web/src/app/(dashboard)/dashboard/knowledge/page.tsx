@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { apiRequest, ApiError } from '@/lib/api-client';
 import { useLanguage } from '@/lib/language';
+import { useSession } from '@/lib/session';
 import { PageHeader } from '@/components/page-header';
 import {
   createKbSchema,
@@ -22,6 +23,8 @@ import {
 
 export default function KnowledgePage() {
   const { t } = useLanguage();
+  const { can } = useSession();
+  const canWriteKb = can('knowledge-base:write');
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState('');
@@ -98,12 +101,14 @@ export default function KnowledgePage() {
             </CardTitle>
             <CardDescription>Add process guides, fees, document lists, and common answers.</CardDescription>
           </div>
+          {canWriteKb ? (
           <Button type="button" size="sm" onClick={() => setShowForm((v) => !v)}>
             <Plus className="mr-1.5 h-4 w-4" /> New entry
           </Button>
+          ) : null}
         </CardHeader>
         <CardContent className="space-y-4">
-          {showForm ? (
+          {showForm && canWriteKb ? (
             <div className="space-y-3 rounded-lg border p-4">
               <Field label="Title">
                 <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Consultation fees" />
@@ -160,7 +165,7 @@ export default function KnowledgePage() {
                     <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{entry.content}</p>
                   </div>
                   <div className="flex shrink-0 gap-2">
-                    {entry.status !== 'PUBLISHED' ? (
+                    {canWriteKb && entry.status !== 'PUBLISHED' ? (
                       <Button
                         type="button"
                         size="sm"
@@ -171,7 +176,7 @@ export default function KnowledgePage() {
                         Publish
                       </Button>
                     ) : null}
-                    {entry.status !== 'ARCHIVED' ? (
+                    {canWriteKb && entry.status !== 'ARCHIVED' ? (
                       <Button
                         type="button"
                         size="sm"

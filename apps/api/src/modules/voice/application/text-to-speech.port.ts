@@ -3,6 +3,7 @@ export interface SynthesizeInput {
   voiceGender: 'male' | 'female';
   voiceId?: string | undefined;
   language?: 'ur' | 'en' | undefined;
+  outputFormat?: 'mp3' | 'pcm_24000' | undefined;
 }
 
 export interface SynthesizeResult {

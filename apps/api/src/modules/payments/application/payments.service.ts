@@ -34,6 +34,7 @@ export interface PaymentResult {
   paymentId: string;
   status: PaymentStatus;
   redirectUrl?: string | undefined;
+  appointmentId?: string | undefined;
 }
 
 /**
@@ -234,7 +235,12 @@ export class PaymentsService {
         caseId: updated.caseId ?? undefined,
       });
 
-      return { paymentId: updated.id, status: updated.status };
+      const appointmentId = asRecord(updated.metadata)['appointmentId'];
+      return {
+        paymentId: updated.id,
+        status: updated.status,
+        ...(typeof appointmentId === 'string' ? { appointmentId } : {}),
+      };
     });
   }
 

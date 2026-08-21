@@ -16,7 +16,7 @@ import { QUEUES } from './queue.constants';
 @Global()
 @Module({})
 export class QueueModule {
-  static register(role: 'api' | 'worker'): DynamicModule {
+  static register(role: 'api' | 'worker' | 'voice'): DynamicModule {
     return {
       module: QueueModule,
       global: true,
@@ -41,6 +41,7 @@ export class QueueModule {
           { name: QUEUES.WHATSAPP_STATUS },
           { name: QUEUES.WHATSAPP_MEDIA },
           { name: QUEUES.WHATSAPP_PILOT },
+          { name: QUEUES.VOICE_CALLS },
           { name: QUEUES.NOTIFICATIONS },
         ),
       ],

@@ -31,4 +31,13 @@ describe('domain event payloads (T1/T2 discipline, D-005)', () => {
     });
     expect(parsed.documentId).toBeDefined();
   });
+
+  it('accepts voice_call.completed with disposition only', () => {
+    const parsed = domainEventPayloads[DOMAIN_EVENTS.VoiceCallCompleted].parse({
+      voiceCallId: '018f3d6e-7c8b-7a2c-9d4e-5f6a7b8c9d0e',
+      conversationId: '018f3d6e-7c8b-7a2c-9d4e-5f6a7b8c9d0f',
+      disposition: 'BOOKED',
+    });
+    expect(parsed.disposition).toBe('BOOKED');
+  });
 });

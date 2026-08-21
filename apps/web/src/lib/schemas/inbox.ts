@@ -29,6 +29,13 @@ export const inboxMessageSchema = z.object({
   documentId: z.string().uuid().nullable().optional(),
   pendingApproval: z.boolean().optional(),
   createdAt: z.coerce.date(),
+  call: z
+    .object({
+      durationSeconds: z.number(),
+      disposition: z.string(),
+      summary: z.string(),
+    })
+    .optional(),
 });
 
 export const inboxSummarySchema = z.object({
@@ -66,6 +73,7 @@ export const inboxSummarySchema = z.object({
       description: z.string().nullable(),
       proofMessageId: z.string().uuid().nullable(),
       proofDocumentId: z.string().uuid().nullable(),
+      appointmentId: z.string().uuid().nullable().optional(),
     })
     .nullable()
     .optional(),

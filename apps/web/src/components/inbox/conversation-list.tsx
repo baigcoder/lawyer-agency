@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { Coins, FileText, ImageIcon, Mic, Search } from 'lucide-react';
+import { Coins, FileText, ImageIcon, Mic, Phone, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/lib/language';
@@ -39,6 +39,14 @@ function PreviewLine({ conversation }: { conversation: InboxSummary }) {
       <span className="flex min-w-0 items-center gap-1">
         <ImageIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />
         <span className="truncate">{t('inboxPhoto')}</span>
+      </span>
+    );
+  }
+  if (last.contentType === 'CALL') {
+    return (
+      <span className="flex min-w-0 items-center gap-1">
+        <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <span className="truncate">{last.body?.trim() || t('inboxCallTitle')}</span>
       </span>
     );
   }

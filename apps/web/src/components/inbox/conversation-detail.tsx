@@ -16,6 +16,7 @@ import {
   FileText,
   LockKeyhole,
   MoreVertical,
+  Phone,
   Send,
   StickyNote,
 } from 'lucide-react';
@@ -202,9 +203,43 @@ function SystemChip({ children }: { children: React.ReactNode }) {
   );
 }
 
+function CallCard({ message }: { message: InboxMessage }) {
+  const { t } = useLanguage();
+  const minutes = Math.floor((message.call?.durationSeconds ?? 0) / 60);
+  const seconds = (message.call?.durationSeconds ?? 0) % 60;
+  const duration =
+    minutes > 0 ? `${minutes}:${String(seconds).padStart(2, '0')}` : `${seconds}s`;
+  const disposition = message.call?.disposition ?? '';
+  const outcome =
+    disposition === 'BOOKED'
+      ? t('inboxCallBooked')
+      : disposition === 'ESCALATED'
+        ? t('inboxCallEscalated')
+        : disposition === 'INFO'
+          ? t('inboxCallInfo')
+          : t('inboxCallEnded');
+  return (
+    <div
+      className="mx-auto flex w-full max-w-sm items-start gap-3 rounded-xl border px-3 py-2.5 shadow-sm"
+      style={{ background: 'var(--wa-system)', color: 'var(--wa-system-fg)' }}
+    >
+      <Phone className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+      <div className="min-w-0">
+        <p className="text-[13px] font-medium">{t('inboxCallTitle')}</p>
+        <p className="text-[12px] opacity-80">
+          {outcome} · {duration}
+        </p>
+        {message.call?.summary ? <p className="mt-1 text-[12.5px] leading-4">{message.call.summary}</p> : null}
+      </div>
+    </div>
+  );
+}
+
 export function ConversationDetail({ detail, onBack }: ConversationDetailProps) {
   const { t } = useLanguage();
   const { can } = useSession();
+  const canWriteInbox = can('inbox:write');
+  const canWriteCases = can('cases:write');
   const router = useRouter();
   const { conversation, messages } = detail;
   const [reply, setReply] = useState('');
@@ -329,9 +364,27 @@ export function ConversationDetail({ detail, onBack }: ConversationDetailProps) 
   });
 
   const verifyPaymentMutation = useMutation({
-    mutationFn: (paymentId: string) => apiRequest(`/v1/payments/${paymentId}/received`, { method: 'POST' }),
-    onSuccess: () => {
-      toast.success(t('inboxPaymentVerified'));
+    mutationFn: (paymentId: string) =>
+      apiRequest(`/v1/payments/${paymentId}/received`, {
+        method: 'POST',
+        schema: z.object({
+          paymentId: z.string().uuid(),
+          status: z.string(),
+          appointmentId: z.string().uuid().optional(),
+        }),
+      }),
+    onSuccess: (data) => {
+      const appointmentId = data.appointmentId ?? conversation.pendingPayment?.appointmentId ?? null;
+      if (appointmentId) {
+        toast.success(t('inboxPaymentVerifiedWithCalendar'), {
+          action: {
+            label: t('calendar'),
+            onClick: () => router.push(`/dashboard/calendar?appointmentId=${appointmentId}`),
+          },
+        });
+      } else {
+        toast.success(t('inboxPaymentVerified'));
+      }
       void queryClient.invalidateQueries({ queryKey: ['inbox'] });
       void queryClient.invalidateQueries({ queryKey: ['payments'] });
     },
@@ -377,6 +430,7 @@ export function ConversationDetail({ detail, onBack }: ConversationDetailProps) 
           className="relative h-9 w-9"
           onClick={() => setNotesOpen((v) => !v)}
           aria-label="Toggle internal notes"
+          disabled={!canWriteInbox && notesCount === 0}
         >
           <StickyNote className="h-5 w-5" style={{ color: 'var(--wa-meta)' }} />
           {notesCount > 0 ? (
@@ -388,7 +442,7 @@ export function ConversationDetail({ detail, onBack }: ConversationDetailProps) 
             </span>
           ) : null}
         </Button>
-        {!conversation.case ? (
+        {!conversation.case && canWriteCases ? (
           <Button
             variant="ghost"
             size="icon"
@@ -399,6 +453,7 @@ export function ConversationDetail({ detail, onBack }: ConversationDetailProps) 
             <Briefcase className="h-5 w-5" style={{ color: 'var(--wa-meta)' }} />
           </Button>
         ) : null}
+        {canWriteInbox ? (
         <Button
           variant="ghost"
           size="icon"
@@ -409,9 +464,10 @@ export function ConversationDetail({ detail, onBack }: ConversationDetailProps) 
         >
           <MoreVertical className="h-5 w-5" style={{ color: 'var(--wa-meta)' }} />
         </Button>
+        ) : null}
       </header>
 
-      {toolsOpen ? (
+      {toolsOpen && canWriteInbox ? (
         <div
           className="flex flex-wrap items-center gap-2 px-3 py-2"
           style={{ background: 'var(--wa-header)', borderBottom: '1px solid var(--wa-border)' }}
@@ -485,6 +541,8 @@ export function ConversationDetail({ detail, onBack }: ConversationDetailProps) 
                 {conversation.pendingDraft.body}
               </p>
               <div className="mt-2 flex gap-2">
+                {canWriteInbox ? (
+                  <>
                 <Button
                   size="sm"
                   className="h-7 text-xs"
@@ -502,6 +560,10 @@ export function ConversationDetail({ detail, onBack }: ConversationDetailProps) 
                 >
                   Reject
                 </Button>
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground">{t('inboxViewOnlyHint')}</p>
+                )}
               </div>
             </div>
           </div>
@@ -646,6 +708,21 @@ export function ConversationDetail({ detail, onBack }: ConversationDetailProps) 
           </p>
         ) : (
           messages.map((m, index) => {
+            if (m.contentType === 'CALL' || m.call) {
+              return (
+                <div key={m.id} className="py-1.5">
+                  {shouldShowDayChip(messages, index) ? (
+                    <p
+                      className="mx-auto mb-1.5 w-fit rounded-md px-2.5 py-1 text-[12.5px] font-medium uppercase shadow-sm"
+                      style={{ background: 'var(--wa-system)', color: 'var(--wa-system-fg)' }}
+                    >
+                      {formatWaDayLabel(m.createdAt, t('today'), t('inboxYesterday'))}
+                    </p>
+                  ) : null}
+                  <CallCard message={m} />
+                </div>
+              );
+            }
             if (m.senderType === 'SYSTEM') {
               return (
                 <div key={m.id} className="py-1.5">
@@ -680,11 +757,16 @@ export function ConversationDetail({ detail, onBack }: ConversationDetailProps) 
       </div>
 
       <div className="shrink-0 px-2 py-1.5 md:px-4" style={{ background: 'var(--wa-composer-bar)' }}>
-        {!windowOpen ? (
+        {!canWriteInbox ? (
+          <p className="mb-1.5 rounded-lg px-3 py-1.5 text-xs" style={{ color: 'var(--wa-meta)' }}>
+            {t('inboxViewOnlyHint')}
+          </p>
+        ) : !windowOpen ? (
           <p className="mb-1.5 rounded-lg bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
             {t('inboxReplyClosed')}
           </p>
         ) : null}
+        {canWriteInbox ? (
         <div className="flex items-end gap-2">
           <Textarea
             value={reply}
@@ -712,6 +794,7 @@ export function ConversationDetail({ detail, onBack }: ConversationDetailProps) 
             <Send className="h-4 w-4" />
           </Button>
         </div>
+        ) : null}
         {replyMutation.isError ? (
           <p role="alert" className="mt-1.5 text-xs text-destructive">
             {replyMutation.error instanceof ApiError

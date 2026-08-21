@@ -51,5 +51,7 @@ describe('AI settings helpers', () => {
     expect(parsed.aiVoiceId).toBe('');
     expect(parsed.aiAskClarifyingQuestions).toBe(true);
     expect(parsed.aiFirmScopeOnly).toBe(true);
+    expect(parsed.callsTakenBy).toBe('ai');
+    expect(parsed.aiCallHoursTimezone).toBe('Asia/Karachi');
   });
 });
