@@ -1,0 +1,38 @@
+# Files that execute inside Linux containers must keep LF endings.
+#
+# Git for Windows defaults to core.autocrlf=true, which rewrites LF to CRLF on
+# checkout. Docker then copies the CRLF copy into the image and /bin/sh fails on
+# the very first line:
+#
+#   migrate.sh: set: line 4: illegal option -
+#
+# ...because it reads `set -e\r`. Pinning eol=lf here fixes it for every clone,
+# rather than relying on each developer's git config.
+
+*.sh            text eol=lf
+*.bash          text eol=lf
+Dockerfile      text eol=lf
+Dockerfile.*    text eol=lf
+*.dockerfile    text eol=lf
+docker-compose*.yml text eol=lf
+*.sql           text eol=lf
+*.sql.seed      text eol=lf
+*.conf          text eol=lf
+
+# Run under Node in containers as well as on the host.
+*.mjs           text eol=lf
+*.cjs           text eol=lf
+
+# Entrypoints and init scripts have no extension.
+infra/**        text=auto eol=lf
+
+# Binary assets must never be line-ending converted.
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.ico           binary
+*.webp          binary
+*.mp3           binary
+*.ogg           binary
+*.woff          binary
+*.woff2         binary
