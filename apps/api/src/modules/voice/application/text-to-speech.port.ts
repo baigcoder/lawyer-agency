@@ -9,7 +9,10 @@ export interface SynthesizeInput {
 export interface SynthesizeResult {
   audioBuffer: Buffer;
   mimeType: string;
+  /** Characters actually sent to the engine — what a per-character bill counts. */
   charactersUsed: number;
+  /** Engine that produced this audio, so the spend can be priced and metered. */
+  model: string;
 }
 
 export interface TtsVoice {

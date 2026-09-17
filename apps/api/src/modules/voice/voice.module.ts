@@ -1,4 +1,5 @@
 import { Module, type DynamicModule } from '@nestjs/common';
+import { AiLlmModule } from '../ai/ai-llm.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { WhatsappPortsModule } from '../whatsapp/whatsapp-ports.module';
 import { DocumentsModule } from '../documents/documents.module';
@@ -19,7 +20,7 @@ export class VoiceModule {
   static register(role: 'api' | 'worker'): DynamicModule {
     return {
       module: VoiceModule,
-      imports: [
+      imports: [AiLlmModule, 
         WhatsappPortsModule,
         WhatsappModule.register(role),
         DocumentsModule.register(role),

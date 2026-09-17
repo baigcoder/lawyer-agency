@@ -85,13 +85,22 @@ export function ttsBodyForModel(
  * the slowest model, but reaching it beats dropping to robotic espeak.
  * `multilingual_v2` stays English-only — it does not speak Urdu well.
  */
-export function ttsModelPlan(input: { language: TtsLanguage; liveCall: boolean }): string[] {
+export function ttsModelPlan(input: {
+  language: TtsLanguage;
+  liveCall: boolean;
+  /** Firm-chosen model for Urdu notes; the other is kept as the fallback. */
+  urduNoteModel?: string;
+}): string[] {
   if (input.liveCall) {
     return input.language === 'ur'
       ? [LIVE_TTS_MODEL, NOTE_TTS_MODEL, FALLBACK_QUALITY_TTS_MODEL]
       : [LIVE_TTS_MODEL, NOTE_TTS_MODEL];
   }
-  if (input.language === 'ur') return [FALLBACK_QUALITY_TTS_MODEL, NOTE_TTS_MODEL];
+  if (input.language === 'ur') {
+    const preferred = input.urduNoteModel ?? FALLBACK_QUALITY_TTS_MODEL;
+    const other = preferred === FALLBACK_QUALITY_TTS_MODEL ? NOTE_TTS_MODEL : FALLBACK_QUALITY_TTS_MODEL;
+    return [preferred, other];
+  }
   return [NOTE_TTS_MODEL, FALLBACK_QUALITY_TTS_MODEL, FALLBACK_ENGLISH_TTS_MODEL];
 }
 

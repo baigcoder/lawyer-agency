@@ -49,6 +49,7 @@ export class ElevenLabsTtsClient implements TextToSpeechPort {
   private readonly voiceFemale: string;
   private readonly urduVoiceMale: string;
   private readonly urduVoiceFemale: string;
+  private readonly urduNoteModel: string;
   private cachedVoices: { at: number; voices: TtsVoice[] } | null = null;
 
   constructor(config: ConfigService<Env, true>) {
@@ -61,6 +62,7 @@ export class ElevenLabsTtsClient implements TextToSpeechPort {
       config.get('ELEVENLABS_VOICE_ID_URDU_MALE', { infer: true }) ?? URDU_DEFAULT_VOICE_MALE;
     this.urduVoiceFemale =
       config.get('ELEVENLABS_VOICE_ID_URDU_FEMALE', { infer: true }) ?? URDU_DEFAULT_VOICE_FEMALE;
+    this.urduNoteModel = config.get('ELEVENLABS_URDU_NOTE_MODEL', { infer: true });
   }
 
   isConfigured(): boolean {
@@ -148,7 +150,7 @@ export class ElevenLabsTtsClient implements TextToSpeechPort {
     let lastStatus = 0;
     let lastError: Error | null = null;
 
-    for (const model of ttsModelPlan({ language, liveCall: pcm })) {
+    for (const model of ttsModelPlan({ language, liveCall: pcm, urduNoteModel: this.urduNoteModel })) {
       // Keeps voice_settings on every attempt (the English fallback used to send
       // text + model only, silently reverting the slower speaking rate) and
       // drops `language_code` for models that reject it.
@@ -177,6 +179,7 @@ export class ElevenLabsTtsClient implements TextToSpeechPort {
             // ElevenLabs bills the text it actually spoke, which is the
             // normalized and clipped body — not the caller's raw input.
             charactersUsed: attemptBody.text.length,
+            model,
           };
         }
 

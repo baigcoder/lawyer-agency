@@ -37,8 +37,11 @@ export function prepareSpokenTtsText(
     .replace(/\s+([.!?،۔])/g, '$1')
     .replace(/([.!?۔]){2,}/g, '$1')
     .replace(/,\s*,+/g, ',')
-    // Soft pauses so replies sound less rushed than a single run-on sentence.
-    .replace(/([.!?۔])\s+/g, '$1 ... ')
+    // One opening beat so the reply does not start rushed. An ellipsis reads as
+    // *hesitation* to the TTS engine, so one per sentence made a four-sentence
+    // answer sound unsure of itself the whole way through; sentence-final
+    // punctuation plus the tuned `speed` already carry the rest of the pacing.
+    .replace(/([.!?۔])\s+/, '$1 ... ')
     .replace(/\s*,\s*/g, ', ')
     .trim();
   return clipSpokenText(cleaned, SPOKEN_CHAR_LIMIT);

@@ -19,6 +19,7 @@ export async function synthesizeWithEspeak(input: SynthesizeInput): Promise<Synt
     audioBuffer: mp3 ?? wav,
     mimeType: mp3 ? 'audio/mpeg' : 'audio/wav',
     charactersUsed: spoken.length,
+    model: 'espeak-ng',
   };
 }
 
