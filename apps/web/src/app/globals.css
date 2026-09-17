@@ -127,7 +127,26 @@
     @apply bg-background text-foreground;
   }
   html {
-    @apply font-sans;
+    @apply scroll-smooth font-sans;
+  }
+}
+
+/*
+ * Reduced-motion guard. `tw-animate-css` does not wrap its keyframes in this
+ * query, so anything using `animate-in`/`transition-*` needs it applied here —
+ * one global rule rather than a `motion-reduce:` variant on every call site, so
+ * motion added later inherits the guarantee.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  html {
+    scroll-behavior: auto !important;
   }
 }
 

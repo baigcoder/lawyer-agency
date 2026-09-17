@@ -20,3 +20,7 @@ coverage/
 
 # Prisma generated client
 generated/
+
+# Local debugging artifacts
+.dbg/
+debug-*.md

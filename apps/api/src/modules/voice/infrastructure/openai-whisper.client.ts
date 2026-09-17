@@ -29,6 +29,9 @@ export class OpenAiWhisperClient implements SpeechToTextPort {
     if (input.languageHint) {
       form.append('language', input.languageHint);
     }
+    if (input.prompt) {
+      form.append('prompt', input.prompt);
+    }
 
     const response = await fetch(`${this.runtime.baseUrl}/audio/transcriptions`, {
       method: 'POST',

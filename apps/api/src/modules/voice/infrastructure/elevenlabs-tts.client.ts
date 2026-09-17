@@ -9,9 +9,11 @@ import type {
 } from '../application/text-to-speech.port';
 import {
   buildElevenLabsTtsBody,
-  FALLBACK_ENGLISH_TTS_MODEL,
-  FALLBACK_QUALITY_TTS_MODEL,
+  classifyTtsFailure,
+  isValidVoiceId,
   resolveTtsLanguage,
+  ttsBodyForModel,
+  ttsModelPlan,
 } from './elevenlabs-tts.request';
 import { synthesizeWithEspeak } from './espeak-tts';
 
@@ -45,12 +47,20 @@ export class ElevenLabsTtsClient implements TextToSpeechPort {
   private readonly apiKey: string | undefined;
   private readonly voiceMale: string;
   private readonly voiceFemale: string;
+  private readonly urduVoiceMale: string;
+  private readonly urduVoiceFemale: string;
   private cachedVoices: { at: number; voices: TtsVoice[] } | null = null;
 
   constructor(config: ConfigService<Env, true>) {
     this.apiKey = config.get('ELEVENLABS_API_KEY', { infer: true });
     this.voiceMale = config.get('ELEVENLABS_VOICE_ID_MALE', { infer: true }) ?? DEFAULT_VOICE_MALE;
     this.voiceFemale = config.get('ELEVENLABS_VOICE_ID_FEMALE', { infer: true }) ?? DEFAULT_VOICE_FEMALE;
+    // A Hindi/Urdu voice from the firm's own library, when they have one. The
+    // built-in defaults are English voices that merely pronounce Urdu.
+    this.urduVoiceMale =
+      config.get('ELEVENLABS_VOICE_ID_URDU_MALE', { infer: true }) ?? URDU_DEFAULT_VOICE_MALE;
+    this.urduVoiceFemale =
+      config.get('ELEVENLABS_VOICE_ID_URDU_FEMALE', { infer: true }) ?? URDU_DEFAULT_VOICE_FEMALE;
   }
 
   isConfigured(): boolean {
@@ -58,9 +68,23 @@ export class ElevenLabsTtsClient implements TextToSpeechPort {
   }
 
   async listVoices(): Promise<TtsVoice[]> {
-    if (!this.apiKey) return CURATED_VOICES;
+    return (await this.loadVoices()).voices;
+  }
+
+  /**
+   * Voice list plus why it may be incomplete.
+   *
+   * A key without the `voices_read` permission 401s here, and this used to
+   * return the curated English list as though it were the firm's library — so
+   * a voice the firm had added (an Urdu or Hindi one, say) simply never
+   * appeared in the picker, with nothing on screen to explain it.
+   */
+  async loadVoices(): Promise<{ voices: TtsVoice[]; complete: boolean; reason?: string }> {
+    if (!this.apiKey) {
+      return { voices: CURATED_VOICES, complete: false, reason: 'ELEVENLABS_API_KEY is not set.' };
+    }
     const fresh = this.cachedVoices && Date.now() - this.cachedVoices.at < 10 * 60 * 1000;
-    if (fresh && this.cachedVoices) return this.cachedVoices.voices;
+    if (fresh && this.cachedVoices) return { voices: this.cachedVoices.voices, complete: true };
 
     try {
       const response = await fetch('https://api.elevenlabs.io/v1/voices', {
@@ -69,16 +93,20 @@ export class ElevenLabsTtsClient implements TextToSpeechPort {
       });
       if (!response.ok) {
         this.logger.warn({ status: response.status }, 'elevenlabs list voices failed');
-        return CURATED_VOICES;
+        return { voices: CURATED_VOICES, complete: false, reason: voiceListReason(response.status) };
       }
       const payload: unknown = await response.json();
       const voices = parseVoiceList(payload);
       const merged = mergeVoices(CURATED_VOICES, voices);
       this.cachedVoices = { at: Date.now(), voices: merged };
-      return merged;
+      return { voices: merged, complete: true };
     } catch (error) {
       this.logger.warn({ error }, 'elevenlabs list voices failed');
-      return CURATED_VOICES;
+      return {
+        voices: CURATED_VOICES,
+        complete: false,
+        reason: 'Could not reach ElevenLabs. Showing the built-in voices only.',
+      };
     }
   }
 
@@ -103,57 +131,99 @@ export class ElevenLabsTtsClient implements TextToSpeechPort {
 
   private async synthesizeElevenLabs(input: SynthesizeInput, pcm: boolean): Promise<SynthesizeResult> {
     const language = resolveTtsLanguage(input.text, input.language);
-    const voiceId =
-      input.voiceId?.trim() ||
-      (language === 'ur'
-        ? input.voiceGender === 'male'
-          ? URDU_DEFAULT_VOICE_MALE
-          : URDU_DEFAULT_VOICE_FEMALE
-        : input.voiceGender === 'male'
-          ? this.voiceMale
-          : this.voiceFemale);
-    const body = buildElevenLabsTtsBody({ text: input.text, language, liveCall: pcm });
+    const voiceId = this.resolveVoiceId(input, language);
+    const body = buildElevenLabsTtsBody({
+      text: input.text,
+      language,
+      liveCall: pcm,
+      voiceGender: input.voiceGender,
+    });
     const format = pcm ? 'pcm_24000' : 'mp3_44100_64';
-    const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=${format}`;
-    let response = await this.postTts(url, body, pcm);
+    const url = `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=${format}`;
 
-    if (!response.ok) {
-      const fallbackText = await response.text().catch(() => 'unknown');
-      this.logger.warn(
-        { status: response.status, body: fallbackText.slice(0, 200), model: body.model_id },
-        'elevenlabs turbo/flash failed — retrying v3',
-      );
-      response = await this.postTts(
-        url,
-        { ...body, model_id: FALLBACK_QUALITY_TTS_MODEL },
-        pcm,
-      );
+    // A whole-chain budget. Three sequential attempts at the old per-request
+    // timeouts could spend 75s on one voice note, or leave a caller listening
+    // to 40s of silence, before anything fell back to a local engine.
+    const deadline = Date.now() + (pcm ? LIVE_BUDGET_MS : NOTE_BUDGET_MS);
+    let lastStatus = 0;
+    let lastError: Error | null = null;
+
+    for (const model of ttsModelPlan({ language, liveCall: pcm })) {
+      // Keeps voice_settings on every attempt (the English fallback used to send
+      // text + model only, silently reverting the slower speaking rate) and
+      // drops `language_code` for models that reject it.
+      const attemptBody = ttsBodyForModel(body, model, language);
+
+      for (let attempt = 0; attempt < MAX_ATTEMPTS_PER_MODEL; attempt++) {
+        if (Date.now() >= deadline) break;
+
+        let response: Response;
+        try {
+          response = await this.postTts(url, attemptBody, pcm, deadline);
+        } catch (error) {
+          // fetch rejects on timeouts and dropped sockets. This used to escape
+          // the fallback chain entirely and fail the whole synthesis.
+          lastError = error instanceof Error ? error : new Error(String(error));
+          this.logger.warn({ model, attempt, err: lastError.message }, 'elevenlabs request failed');
+          if (attempt + 1 < MAX_ATTEMPTS_PER_MODEL) await sleep(retryDelayMs(attempt));
+          continue;
+        }
+
+        if (response.ok) {
+          const audioBuffer = Buffer.from(await response.arrayBuffer());
+          return {
+            audioBuffer,
+            mimeType: pcm ? 'audio/pcm' : 'audio/mpeg',
+            // ElevenLabs bills the text it actually spoke, which is the
+            // normalized and clipped body — not the caller's raw input.
+            charactersUsed: attemptBody.text.length,
+          };
+        }
+
+        lastStatus = response.status;
+        const detail = await response.text().catch(() => 'unknown');
+        const failure = classifyTtsFailure(response.status);
+        this.logger.warn(
+          { status: response.status, model, attempt, failure, body: detail.slice(0, 200) },
+          'elevenlabs tts rejected',
+        );
+        if (failure === 'fatal') throw new Error(`ElevenLabs HTTP ${response.status}`);
+        if (failure === 'next-model') break;
+        // Rate limit or server fault: wait and retry this same model. Moving to
+        // another model cannot clear a concurrency limit.
+        if (attempt + 1 < MAX_ATTEMPTS_PER_MODEL) {
+          await sleep(retryAfterMs(response) ?? retryDelayMs(attempt));
+        }
+      }
     }
 
-    if (!response.ok && language === 'en') {
-      const fallbackText = await response.text().catch(() => 'unknown');
-      this.logger.warn(
-        { status: response.status, body: fallbackText.slice(0, 200) },
-        'elevenlabs v3 failed — retrying multilingual v2',
-      );
-      response = await this.postTts(url, { text: body.text, model_id: FALLBACK_ENGLISH_TTS_MODEL }, pcm);
-    }
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => 'unknown');
-      this.logger.warn({ status: response.status, body: text.slice(0, 200) }, 'elevenlabs tts failed');
-      throw new Error(`ElevenLabs HTTP ${response.status}`);
-    }
-
-    const audioBuffer = Buffer.from(await response.arrayBuffer());
-    return {
-      audioBuffer,
-      mimeType: pcm ? 'audio/pcm' : 'audio/mpeg',
-      charactersUsed: input.text.length,
-    };
+    throw new Error(
+      lastStatus > 0
+        ? `ElevenLabs HTTP ${lastStatus}`
+        : `ElevenLabs request failed: ${lastError?.message ?? 'unknown'}`,
+    );
   }
 
-  private async postTts(url: string, body: object, pcm: boolean): Promise<Response> {
+  /**
+   * Falls back to a curated default when the tenant's stored `aiVoiceId` is not
+   * a real ElevenLabs id — otherwise a typo means every synthesis 404s through
+   * the whole chain before reaching espeak.
+   */
+  private resolveVoiceId(input: SynthesizeInput, language: 'ur' | 'en'): string {
+    const configured = input.voiceId?.trim();
+    if (configured) {
+      if (isValidVoiceId(configured)) return configured;
+      this.logger.warn({ voiceId: configured.slice(0, 12) }, 'ignoring malformed aiVoiceId');
+    }
+    if (language === 'ur') {
+      return input.voiceGender === 'male' ? this.urduVoiceMale : this.urduVoiceFemale;
+    }
+    return input.voiceGender === 'male' ? this.voiceMale : this.voiceFemale;
+  }
+
+  private async postTts(url: string, body: object, pcm: boolean, deadline: number): Promise<Response> {
+    const remaining = deadline - Date.now();
+    const perRequest = pcm ? LIVE_REQUEST_TIMEOUT_MS : NOTE_REQUEST_TIMEOUT_MS;
     return fetch(url, {
       method: 'POST',
       headers: {
@@ -162,9 +232,42 @@ export class ElevenLabsTtsClient implements TextToSpeechPort {
         accept: pcm ? 'application/octet-stream' : 'audio/mpeg',
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(pcm ? 20_000 : 25_000),
+      signal: AbortSignal.timeout(Math.max(1_000, Math.min(perRequest, remaining))),
     });
   }
+}
+
+/** Whole-chain budgets; a live caller tolerates far less silence than a chat. */
+const LIVE_BUDGET_MS = 14_000;
+const NOTE_BUDGET_MS = 30_000;
+const LIVE_REQUEST_TIMEOUT_MS = 8_000;
+const NOTE_REQUEST_TIMEOUT_MS = 20_000;
+const MAX_ATTEMPTS_PER_MODEL = 2;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function retryDelayMs(attempt: number, random: () => number = Math.random): number {
+  const base = Math.min(400 * 2 ** attempt, 2_000);
+  return Math.round(base * (0.5 + random() * 0.5));
+}
+
+/** ElevenLabs sends `retry-after` on concurrency rejections; honour it. */
+export function retryAfterMs(response: Pick<Response, 'headers'>): number | null {
+  const header = response.headers.get('retry-after')?.trim();
+  if (!header) return null;
+  const seconds = Number.parseFloat(header);
+  if (Number.isNaN(seconds) || seconds < 0) return null;
+  return Math.min(seconds * 1000, 5_000);
+}
+
+export function voiceListReason(status: number): string {
+  if (status === 401 || status === 403) {
+    return 'The ElevenLabs API key cannot read your voice library (it needs the `voices_read` permission), so only the built-in voices are shown.';
+  }
+  if (status === 429) return 'ElevenLabs rate-limited the voice list. Showing the built-in voices for now.';
+  return `ElevenLabs returned HTTP ${status} for the voice list. Showing the built-in voices only.`;
 }
 
 function parseVoiceList(payload: unknown): TtsVoice[] {
@@ -190,12 +293,22 @@ function parseVoiceList(payload: unknown): TtsVoice[] {
   });
 }
 
-function mergeVoices(curated: TtsVoice[], fetched: TtsVoice[]): TtsVoice[] {
+/** Hard cap so a large library cannot bloat the settings payload. */
+const MAX_LISTED_VOICES = 80;
+
+/**
+ * The firm's own library comes first, curated built-ins only fill the tail.
+ *
+ * With the curated English voices inserted first, a real account sat at 31
+ * unique voices against a cap of 30 — and the one silently cut was the last
+ * of the firm's own, which is exactly the voice someone had just added.
+ */
+export function mergeVoices(curated: TtsVoice[], fetched: TtsVoice[]): TtsVoice[] {
   const byId = new Map<string, TtsVoice>();
-  for (const voice of [...curated, ...fetched]) {
-    byId.set(voice.id, voice);
+  for (const voice of [...fetched, ...curated]) {
+    if (!byId.has(voice.id)) byId.set(voice.id, voice);
   }
-  return Array.from(byId.values()).slice(0, 30);
+  return Array.from(byId.values()).slice(0, MAX_LISTED_VOICES);
 }
 
 function titleCase(value: string): string {

@@ -15,6 +15,8 @@ export class AiContextBuilder {
     conversationId: string;
     tx: Prisma.TransactionClient;
     retrievedChunks?: RetrievedChunk[];
+    /** Decided by the caller, which knows whether this turn was a voice note. */
+    replyWillBeSpoken?: boolean;
   }): Promise<AiRunContext> {
     const tenant = await params.tx.tenant.findUnique({
       where: { id: params.tenantId },
@@ -78,6 +80,7 @@ export class AiContextBuilder {
       caseId: conversation.caseId ?? undefined,
       retrievedChunks: chunks,
       retrievedContext: formatRetrievedContext(chunks),
+      replyWillBeSpoken: params.replyWillBeSpoken ?? false,
     };
   }
 }

@@ -101,6 +101,50 @@ describe('EscalationDetectorService', () => {
     expect(result).toMatchObject({ triggerType: 'ACTIVE_ARREST' });
   });
 
+  it('lets the model clear a process question that merely uses legal vocabulary', async () => {
+    const { service } = makeService({ output: { triggered: false } });
+    await expect(
+      service.detect({
+        tenantId: 't1',
+        tenantAllowlist: [],
+        clientText: 'what is the procedure to file an FIR at a police station?',
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it('escalates an ambiguous legal-vocabulary message when the model is unavailable', async () => {
+    const factory = {
+      get: vi.fn(() => ({
+        provider: 'openai',
+        call: vi.fn(async () => {
+          throw new Error('provider down');
+        }),
+      })),
+    };
+    const modelRouter = {
+      choose: vi.fn(() => ({
+        provider: 'openai',
+        model: 'gpt-4o',
+        inputCostPer1kTokens: 0,
+        outputCostPer1kTokens: 0,
+      })),
+      checkBudget: vi.fn(async () => true),
+    };
+    const service = new EscalationDetectorService(
+      factory as never,
+      modelRouter as never,
+      { findActive: vi.fn(async () => null) } as never,
+      { log: vi.fn() } as never,
+    );
+    await expect(
+      service.detect({
+        tenantId: 't1',
+        tenantAllowlist: [],
+        clientText: 'my son is at the police station',
+      }),
+    ).resolves.toMatchObject({ triggerType: 'ACTIVE_ARREST' });
+  });
+
   it('treats a brother’s arrest or a killing as an urgent handoff', async () => {
     const { service } = makeService();
     await expect(

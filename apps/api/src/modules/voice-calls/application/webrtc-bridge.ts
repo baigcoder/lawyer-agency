@@ -14,14 +14,36 @@ import { monoFromStereo, padToFrame, stereoFromMono } from './pcm-audio';
 
 const FRAME_SAMPLES = 960; // 20ms at 48kHz
 const TIMESTAMP_STEP = 960;
+export const FRAME_MS = 20;
+/** Let the receiver's jitter buffer run this far ahead of real time. */
+const PLAYOUT_LEAD_MS = 120;
+
+export interface SpeakOptions {
+  /** Aborting stops playback mid-sentence — this is how barge-in works. */
+  signal?: AbortSignal | undefined;
+}
 
 export interface HeldRtcSession {
   readonly media: 'live' | 'signaling-only';
   isClosed(): boolean;
   close(): void;
-  sendPcm48kMono(pcm: Int16Array): Promise<void>;
+  /** Resolves when the audio has been paced out, not when it was queued. */
+  sendPcm48kMono(pcm: Int16Array, options?: SpeakOptions): Promise<void>;
   onIncomingPcm(handler: (pcm: Int16Array) => void): void;
   waitConnected(timeoutMs: number): Promise<boolean>;
+}
+
+/**
+ * Wall-clock schedule for RTP frames.
+ *
+ * `sendRtp` transmits immediately, so sending every frame of a reply in one
+ * loop delivers a whole spoken turn as a burst: the caller's jitter buffer
+ * keeps a fraction of a second and drops the rest, which is heard as clipped
+ * or garbled speech. Frames have to leave at the rate they are played.
+ */
+export function frameDelayMs(frameIndex: number, elapsedMs: number, leadMs = PLAYOUT_LEAD_MS): number {
+  const dueAt = frameIndex * FRAME_MS - leadMs;
+  return Math.max(0, Math.round(dueAt - elapsedMs));
 }
 
 export interface WhatsappBridgeOptions {
@@ -203,11 +225,14 @@ function liveSession(
         timeoutMs,
       );
     },
-    async sendPcm48kMono(pcm) {
+    async sendPcm48kMono(pcm, options) {
       if (closed || pcm.length === 0) return;
       const padded = padToFrame(pcm, FRAME_SAMPLES);
       const stereo = stereoFromMono(padded);
+      const startedAt = Date.now();
+      let frameIndex = 0;
       for (let offset = 0; offset + FRAME_SAMPLES * 2 <= stereo.length; offset += FRAME_SAMPLES * 2) {
+        if (closed || options?.signal?.aborted) return;
         const frame = stereo.subarray(offset, offset + FRAME_SAMPLES * 2);
         const encoded = encoder.encode(
           Buffer.from(frame.buffer, frame.byteOffset, frame.byteLength),
@@ -226,9 +251,16 @@ function liveSession(
           encoded,
         );
         await audio.sender.sendRtp(packet);
+        frameIndex += 1;
+        const wait = frameDelayMs(frameIndex, Date.now() - startedAt);
+        if (wait > 0) await sleepMs(wait);
       }
     },
   };
+}
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function waitMsUntil(pred: () => boolean, timeoutMs: number): Promise<boolean> {

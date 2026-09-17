@@ -187,7 +187,10 @@ export function generateGreetingIntro(source: GreetingIntroSource, language: 'en
   return clipIntro(`AI assistant for {{displayName}} — helps with intake and general questions`);
 }
 
-export function buildAiAssumptionsBlock(settings: AiSettings): string {
+export function buildAiAssumptionsBlock(
+  settings: AiSettings,
+  options?: { replyWillBeSpoken?: boolean },
+): string {
   const lines = [
     'Never give legal advice, legal conclusions, or predict case outcomes.',
     settings.aiNeverInventCaseFacts
@@ -204,8 +207,36 @@ export function buildAiAssumptionsBlock(settings: AiSettings): string {
       : 'Stay professional; you may greet, but do not flirt or role-play.',
     replyLengthInstruction(settings.aiReplyLength),
     languagePolicyInstruction(settings),
+    urduGenderInstruction(settings.aiVoiceGender),
+    ...(options?.replyWillBeSpoken ? [SPOKEN_REPLY_INSTRUCTION] : []),
   ];
   return lines.join('\n');
+}
+
+/**
+ * Only applied when the reply goes out as a voice note. Text replies keep
+ * mirroring the client's script (D-004) — a Roman Urdu chat stays Roman Urdu —
+ * but a spoken reply cannot: the Urdu voice reads Latin letters with English
+ * phonetics, so "Aap ka masla samajh gaya" comes out as gibberish.
+ */
+const SPOKEN_REPLY_INSTRUCTION = [
+  'This reply will be SPOKEN ALOUD as a voice note.',
+  'If you reply in Urdu, write it in Urdu (Arabic) script — never in Roman Urdu, which is mispronounced when spoken.',
+  'Write numbers, dates and times as words a person would say, not as digits or timestamps.',
+  'Inside an Urdu sentence, write borrowed words in Urdu script too (واٹس ایپ، شناختی کارڈ، ایف آئی آر) — Latin letters are read with English phonetics and sound wrong.',
+  'No bullet points, headings, links or emoji: they are read out literally.',
+].join('\n');
+
+/**
+ * Urdu verbs agree with the speaker's own gender, so the assistant has to know
+ * which voice speaks for it. Without this the model wrote whichever form it
+ * liked — usually masculine — and the default female voice then said
+ * "میں کر سکتا ہوں", which no Urdu speaker would ever say about herself.
+ */
+export function urduGenderInstruction(voiceGender: AiSettings['aiVoiceGender']): string {
+  return voiceGender === 'male'
+    ? 'When writing Urdu, speak about yourself in the masculine form (کر سکتا ہوں، کروں گا، سمجھ گیا). Keep it consistent.'
+    : 'When writing Urdu, speak about yourself in the feminine form (کر سکتی ہوں، کروں گی، سمجھ گئی). Keep it consistent.';
 }
 
 function parseHourMinute(value: unknown, fallback: string): string {

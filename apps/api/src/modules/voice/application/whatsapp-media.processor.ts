@@ -23,6 +23,7 @@ import {
 } from '../../whatsapp/application/ports';
 import { readAudioSeconds } from '../../../common/messaging/audio-seconds';
 import { SPEECH_TO_TEXT, type SpeechToTextPort } from './speech-to-text.port';
+import { WHISPER_PROMPT } from './stt-prompt';
 
 interface MediaJob {
   tenantId: string;
@@ -209,10 +210,14 @@ export class WhatsappMediaProcessor extends WorkerHost {
     let transcriptLanguage: string | null = null;
     if (context.message.contentType === 'AUDIO') {
       try {
+        const hint = urduHint(context.clientLanguages);
         const result = await this.stt.transcribe({
           audioBuffer: downloaded.buffer,
           mimeType,
-          languageHint: urduHint(context.clientLanguages),
+          languageHint: hint,
+          // Legal vocabulary and Urdu spellings that Whisper otherwise mangles
+          // on a short, noisy WhatsApp voice note.
+          prompt: WHISPER_PROMPT[hint ?? 'en'],
         });
         transcript = result.text || '(voice note — no transcript)';
         transcriptLanguage = result.language;

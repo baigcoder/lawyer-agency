@@ -45,4 +45,11 @@ export interface AiRunContext {
   caseId: string | undefined;
   retrievedChunks: RetrievedChunk[];
   retrievedContext: string;
+  /**
+   * True when this reply will be sent as a voice note rather than text. Roman
+   * Urdu is fine to read but is mangled when spoken: the Urdu voice gets Latin
+   * letters and pronounces them with English phonetics. A spoken reply has to
+   * be written in Urdu script.
+   */
+  replyWillBeSpoken: boolean;
 }

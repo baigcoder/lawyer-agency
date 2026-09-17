@@ -67,6 +67,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </header>
             )}
             <main
+              id="main"
               className={cn(
                 'flex-1',
                 inboxMode ? 'flex min-h-0 flex-col overflow-hidden' : 'px-4 py-6 sm:px-6 lg:px-8',

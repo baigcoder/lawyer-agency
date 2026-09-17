@@ -128,6 +128,20 @@ export const translations = {
     step3Title: 'Invite your team',
     step3Desc:
       'Add lawyers and staff, set roles, and route urgent WhatsApp conversations to the right person automatically.',
+    // Landing — voice receptionist (D-124)
+    voiceTitle: 'Clients who would rather call still get answered',
+    voiceDesc:
+      'When your WhatsApp line rings, the assistant answers, says it is not the lawyer, captures the matter, and books from your real open slots. Calls land in the same inbox as the chats.',
+    voicePoint1: 'It discloses that it is an assistant, not the lawyer, in its first sentence',
+    voicePoint2:
+      'It books appointments from your real open slots, and the confirmation goes out on WhatsApp',
+    voicePoint3:
+      'Arrest, violence, self-harm, and deadline signals end the call and hand the matter to a lawyer',
+    voicePoint4:
+      'If live calling is not available on your number, the assistant follows up on WhatsApp chat instead',
+    voiceGreetingSample:
+      'Assalamualaikum. I am the assistant for Al-Madad Law Associates, not the lawyer. How can I help?',
+    voiceCallerAsks: 'I need to talk to someone about a property case',
     // Landing — security
     securityTitle: 'Clear limits are part of the product',
     securityDesc:
@@ -693,6 +707,19 @@ export const translations = {
     step3Title: 'اپنی ٹیم کو مدعو کریں',
     step3Desc:
       'وکیل اور عملہ شامل کریں، رولز سیٹ کریں، اور فوری واٹس ایپ گفتگو خودکار طور پر صحیح شخص کو منتقل کریں۔',
+    voiceTitle: 'جو کلائنٹ کال کرنا چاہتے ہیں، انہیں بھی جواب ملتا ہے',
+    voiceDesc:
+      'جب آپ کے واٹس ایپ نمبر پر کال آتی ہے، اسسٹنٹ جواب دیتا ہے، بتاتا ہے کہ وہ وکیل نہیں، معاملہ نوٹ کرتا ہے، اور آپ کے اصل خالی اوقات سے اپائنٹمنٹ بک کرتا ہے۔ کالیں اسی ان باکس میں آتی ہیں جہاں چیٹ آتی ہیں۔',
+    voicePoint1: 'پہلے ہی جملے میں بتا دیتا ہے کہ وہ اسسٹنٹ ہے، وکیل نہیں',
+    voicePoint2:
+      'آپ کے اصل خالی اوقات سے اپائنٹمنٹ بک کرتا ہے، اور تصدیق واٹس ایپ پر بھیجی جاتی ہے',
+    voicePoint3:
+      'گرفتاری، تشدد، خود کو نقصان، اور ڈیڈ لائن کے اشارے کال ختم کر کے معاملہ وکیل کو سونپ دیتے ہیں',
+    voicePoint4:
+      'اگر آپ کے نمبر پر لائیو کالنگ دستیاب نہ ہو تو اسسٹنٹ واٹس ایپ چیٹ پر فالو اپ کرتا ہے',
+    voiceGreetingSample:
+      'السلام علیکم۔ میں المدد لاء ایسوسی ایٹس کا اسسٹنٹ ہوں، وکیل نہیں۔ میں آپ کی کیا مدد کر سکتا ہوں؟',
+    voiceCallerAsks: 'مجھے جائیداد کے ایک کیس کے بارے میں بات کرنی ہے',
     securityTitle: 'واضح حدود پروڈکٹ کا حصہ ہیں',
     securityDesc:
       'وکیل انٹیک اور منظور شدہ معلومات میں مدد کرتا ہے۔ اسے وکیل کے طور پر پیش نہیں کیا جاتا اور یہ قانونی نتیجہ اخذ نہیں کرتا۔',

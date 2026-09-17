@@ -6,6 +6,7 @@ import { SPEECH_TO_TEXT, type SpeechToTextPort } from '../../voice/application/s
 import { TEXT_TO_SPEECH, type TextToSpeechPort } from '../../voice/application/text-to-speech.port';
 import type { AiSettings } from '../../firm-profile/application/ai-settings.dto';
 import { prepareSpokenTtsText } from '../../voice/application/spoken-text';
+import { WHISPER_PROMPT, type CallLanguage } from './call-language';
 import {
   pcmToWav,
   rawPcmTo48kMono,
@@ -26,27 +27,48 @@ export class CallSpeechService {
     @Inject(TEXT_TO_SPEECH) private readonly tts: TextToSpeechPort,
   ) {}
 
-  async transcribe(pcm48kMono: Int16Array, language: 'ur' | 'en'): Promise<string | null> {
+  /**
+   * Transcribes one caller turn.
+   *
+   * `language` of `null` means "auto-detect" — used for the first utterance of a
+   * `mirror`-policy call so the caller, not the assistant's own last line,
+   * decides the call language. The provider's reported language is returned so
+   * the caller can lock the session; it used to be thrown away.
+   */
+  async transcribe(
+    pcm48kMono: Int16Array,
+    language: CallLanguage | null,
+  ): Promise<{ text: string; reportedLanguage: string | null } | null> {
     if (pcm48kMono.length < 48000 * 0.3) return null;
     const wav = pcmToWav(Buffer.from(pcm48kMono.buffer, pcm48kMono.byteOffset, pcm48kMono.byteLength), 48000, 1);
     try {
       const result = await this.stt.transcribe({
         audioBuffer: wav,
         mimeType: 'audio/wav',
-        languageHint: language,
+        languageHint: language ?? undefined,
+        prompt: WHISPER_PROMPT[language ?? 'ur'],
       });
       const text = result.text.trim();
-      return text.length > 0 ? text : null;
+      return text.length > 0 ? { text, reportedLanguage: result.language } : null;
     } catch (error) {
       this.logger.warn({ err: error instanceof Error ? error.message : 'stt' }, 'call STT failed');
       return null;
     }
   }
 
-  async synthesize(text: string, settings: AiSettings): Promise<Int16Array> {
-    const spoken = prepareSpokenTtsText(text);
+  /**
+   * `callLanguage` is the language locked for this call. Pass it — deriving the
+   * voice language from the reply text alone mispronounces Roman Urdu (Latin
+   * letters read with English phonetics) and flips voices mid-call.
+   */
+  async synthesize(
+    text: string,
+    settings: AiSettings,
+    callLanguage?: CallLanguage,
+  ): Promise<Int16Array> {
+    const spoken = prepareSpokenTtsText(text, settings.aiVoiceGender);
     if (!spoken) return tonePcm48k(0.4, 440);
-    const language = speechLanguage(spoken, settings.aiLanguagePolicy);
+    const language = callLanguage ?? speechLanguage(spoken, settings.aiLanguagePolicy);
 
     if (this.tts.isConfigured()) {
       try {
@@ -79,16 +101,17 @@ export class CallSpeechService {
   async synthesizeWhatsappNote(
     text: string,
     settings: AiSettings,
+    callLanguage?: CallLanguage,
   ): Promise<{ audioBuffer: Buffer; mimeType: string } | null> {
     if (!this.tts.isConfigured()) return null;
-    const spoken = prepareSpokenTtsText(text);
+    const spoken = prepareSpokenTtsText(text, settings.aiVoiceGender);
     if (!spoken) return null;
     try {
       const result = await this.tts.synthesize({
         text: spoken,
         voiceGender: settings.aiVoiceGender,
         voiceId: settings.aiVoiceId || undefined,
-        language: speechLanguage(spoken, settings.aiLanguagePolicy),
+        language: callLanguage ?? speechLanguage(spoken, settings.aiLanguagePolicy),
       });
       return { audioBuffer: result.audioBuffer, mimeType: result.mimeType };
     } catch (error) {
