@@ -1,0 +1,34 @@
+# Optional dashboard container for the local stack.
+#
+# `docker-compose.yml` deliberately leaves the dashboard out so you can run Next
+# with hot reload (`PORT=3002 npm run dev -w @app/web`). Use this overlay when
+# you want the whole product running in Docker instead — on a machine without a
+# local Node toolchain, for example:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.web.yml up -d --build
+#
+# It serves the same production build the prod compose does, on the port
+# APP_PUBLIC_URL already expects.
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # NEXT_PUBLIC_* are inlined into the client bundle during the build, so
+        # they must be build args. Passing them as `environment:` would leave
+        # the browser bundle with empty values.
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-/backend}
+        NEXT_PUBLIC_DEV_TENANT_ID: ${NEXT_PUBLIC_DEV_TENANT_ID:-018f3d6e-7c8b-7a2c-9d4e-5f6a7b8c9d0e}
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      # Same-origin rewrite target: the browser only ever calls /backend/*.
+      API_INTERNAL_URL: http://api:3001
+    ports:
+      - "3002:3000"
+    depends_on:
+      api:
+        condition: service_healthy
