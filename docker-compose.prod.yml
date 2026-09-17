@@ -202,11 +202,23 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      # Next inlines all of these during `next build` — NEXT_PUBLIC_* into the
+      # client bundle, API_INTERNAL_URL into the bundled next.config. Passing
+      # them only as runtime `environment:` leaves the browser with empty values
+      # and the /backend rewrite pointing at localhost.
+      args:
+        API_INTERNAL_URL: http://api:3001
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-/backend}
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
+        NEXT_PUBLIC_LEGAL_BUSINESS_NAME: ${NEXT_PUBLIC_LEGAL_BUSINESS_NAME:-Wakeel Technologies (Pvt) Ltd}
+        NEXT_PUBLIC_LEGAL_CONTACT_EMAIL: ${NEXT_PUBLIC_LEGAL_CONTACT_EMAIL:-privacy@wakeel.pk}
+        # NEXT_PUBLIC_DEV_TENANT_ID is deliberately absent: baking it would ship
+        # the dev seam to production, where every browser would send a
+        # hard-coded x-tenant-id header. Production authenticates with Clerk.
     restart: unless-stopped
     environment:
       NODE_ENV: production
       API_INTERNAL_URL: http://api:3001
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
     depends_on:
       api:
         condition: service_healthy
