@@ -10,6 +10,7 @@ import { HealthModule } from './common/health/health.module';
 import { EventsModule } from './common/events/events.module';
 import { DOMAIN_EVENT_HANDLERS } from './common/events/domain-event-handler.port';
 import { QueueModule } from './common/queue/queue.module';
+import { LocksModule } from './common/locks/locks.module';
 import { DomainEventsDispatcher } from './common/queue/domain-events-dispatcher.processor';
 import { CryptoModule } from './common/crypto/crypto.module';
 import { CorrelationMiddleware } from './common/correlation/correlation.middleware';
@@ -83,6 +84,7 @@ const siblingRole = isWorker ? 'worker' : 'api';
     // is read raw here (module composition precedes ConfigModule validation);
     // main.ts uses the validated config for the listen branch.
     QueueModule.register(queueRole),
+    LocksModule,
     HealthModule,
     isVoice
       ? VoiceCallsModule.register('voice')
