@@ -16,6 +16,9 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
       args:
+        # next.config.ts is bundled into the standalone server, so the rewrite
+        # target is fixed at build time — runtime `environment:` is too late.
+        API_INTERNAL_URL: http://api:3001
         # NEXT_PUBLIC_* are inlined into the client bundle during the build, so
         # they must be build args. Passing them as `environment:` would leave
         # the browser bundle with empty values.

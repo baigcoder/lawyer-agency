@@ -24,6 +24,13 @@ WORKDIR /app
 # Defaults mirror the zod schema in src/lib/env.ts. They cannot be left empty:
 # `.default()` only fills an *undefined* value, so an empty string reaches
 # `.email()` and fails the build with "Invalid email address".
+#
+# API_INTERNAL_URL is read by next.config.ts, which is bundled into the
+# standalone server — so it is inlined at build time too. Supplying it only as
+# runtime `environment:` leaves the rewrite pointing at localhost:3001 and every
+# /backend/* call fails with ECONNREFUSED inside the container.
+ARG API_INTERNAL_URL=http://api:3001
+ENV API_INTERNAL_URL=$API_INTERNAL_URL
 ARG NEXT_PUBLIC_API_BASE=/backend
 ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
 ARG NEXT_PUBLIC_DEV_TENANT_ID=
