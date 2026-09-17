@@ -252,14 +252,23 @@ function replyLengthInstruction(length: AiSettings['aiReplyLength']): string {
   return 'Keep replies balanced: enough to help, not a long essay.';
 }
 
+/**
+ * The "one script" rule is not decoration. Left to itself the model drifts
+ * mid-sentence and produces things no person would write:
+ *
+ *   Aap kis شہر میں ہیں اور کیا aapke پاس کرایہ کا معاہدہ موجود ہے؟
+ */
+const ONE_SCRIPT_RULE =
+  'Use ONE script for the whole reply. Never mix Urdu script and Roman Urdu in the same message or sentence — pick the one the client used and stay in it.';
+
 function languagePolicyInstruction(settings: AiSettings): string {
   if (settings.aiLanguagePolicy === 'english_only' || !settings.aiUrduReplyEnabled) {
     return 'Reply in English only.';
   }
   if (settings.aiLanguagePolicy === 'urdu_preferred') {
-    return 'If the client wrote Urdu or Roman Urdu, reply in that script. Otherwise English is fine.';
+    return `If the client wrote Urdu or Roman Urdu, reply in that script. Otherwise English is fine.\n${ONE_SCRIPT_RULE}`;
   }
-  return 'Reply in the same language and script the client just used (English, Urdu, or Roman Urdu).';
+  return `Reply in the same language and script the client just used (English, Urdu, or Roman Urdu).\n${ONE_SCRIPT_RULE}`;
 }
 
 export function clipIntro(text: string): string {

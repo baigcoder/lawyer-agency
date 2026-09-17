@@ -89,7 +89,7 @@ describe('ai-prompt-variables', () => {
   it('adds a concise configurable AI disclosure only on the first turn', () => {
     const firstTurn = sampleContext({ isFirstClientTurn: true });
     expect(renderFirstTurnDisclosure(firstTurn, 'EN', 'How can I help?')).toBe(
-      "I'm the assistant for ABC Law Associates, not a lawyer. I'll answer your messages and voice notes. Tell me how I can help.\n\nHow can I help?",
+      "I'm the assistant for ABC Law Associates, not a lawyer. I'll answer your messages. Tell me how I can help.\n\nHow can I help?",
     );
 
     const withOwner = sampleContext({
@@ -135,7 +135,7 @@ describe('ai-prompt-variables', () => {
   it('does not repeat an AI-assistant intro the model already wrote', () => {
     const firstTurn = sampleContext({ isFirstClientTurn: true });
     const disclosure =
-      "I'm the assistant for ABC Law Associates, not a lawyer. I'll answer your messages and voice notes. Tell me how I can help.";
+      "I'm the assistant for ABC Law Associates, not a lawyer. I'll answer your messages. Tell me how I can help.";
     expect(
       renderFirstTurnDisclosure(firstTurn, 'EN', "I'm the AI assistant for ABC Law Associates. How can I help?"),
     ).toBe(`${disclosure}\n\nHow can I help?`);

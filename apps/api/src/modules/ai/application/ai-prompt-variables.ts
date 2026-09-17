@@ -3,6 +3,7 @@ import type { Language } from '../domain/types';
 import type { AiRunContext } from './ai-context.types';
 import { buildAiAssumptionsBlock } from '../../firm-profile/application/ai-settings.dto';
 import { buildDynamicReplyRules } from './dynamic-reply-rules';
+import { isRomanUrduReply } from './reply-script';
 
 export function buildFirmPromptVariables(ctx: AiRunContext): Record<string, string> {
   const { firm, aiSettings, ownerProfile } = ctx;
@@ -171,7 +172,17 @@ export function renderFirstTurnDisclosure(
   if (!ctx.isFirstClientTurn) return responseText;
   const vars = buildFirmPromptVariables(ctx);
   const custom = ctx.aiSettings.aiConsentMessage.trim();
-  const template = custom || (channel === 'voice' ? defaultSpokenDisclosure(language, vars) : defaultDisclosure(language, vars));
+  const template =
+    custom ||
+    (channel === 'voice'
+      ? defaultSpokenDisclosure(language, vars)
+      : defaultDisclosure(language, vars, {
+          // Match the script the agent just replied in, so the client does not
+          // receive Urdu script and Roman Urdu in the same message.
+          romanUrdu: isRomanUrduReply(language, responseText),
+          voiceGender: ctx.aiSettings.aiVoiceGender,
+          voiceEnabled: ctx.aiSettings.aiVoiceEnabled,
+        }));
   const disclosure = renderTemplate(template, vars).trim();
   const body = stripLeadingAiSelfIntros(responseText, disclosure);
   if (!disclosure) return body;
@@ -190,6 +201,8 @@ export function defaultSpokenDisclosure(language: Language, vars: Record<string,
   const owner = spokenOwnerName(vars);
   const firm = vars.displayName?.trim() || 'the firm';
   if (language === 'UR') {
+    // Always Urdu script: this line is read aloud, and an Urdu voice
+    // mispronounces Latin letters. No Roman Urdu variant on the spoken path.
     return owner
       ? `میں ${owner} کا اسسٹنٹ ہوں، وکیل خود نہیں۔`
       : `میں ${firm} کا اسسٹنٹ ہوں، وکیل نہیں۔`;
@@ -199,19 +212,55 @@ export function defaultSpokenDisclosure(language: Language, vars: Record<string,
     : `I'm the assistant for ${firm}, not a lawyer.`;
 }
 
-export function defaultDisclosure(language: Language, vars: Record<string, string>): string {
+export interface DisclosureOptions {
+  /** True when the client writes Urdu in Latin letters — mirror that. */
+  romanUrdu?: boolean;
+  /** Female is the default configured voice, and Urdu verbs agree with it. */
+  voiceGender?: 'male' | 'female';
+  /** Only promise to answer voice notes when the firm actually speaks back. */
+  voiceEnabled?: boolean;
+}
+
+export function defaultDisclosure(
+  language: Language,
+  vars: Record<string, string>,
+  options: DisclosureOptions = {},
+): string {
   const owner = spokenOwnerName(vars);
   const firm = vars.displayName?.trim() || 'the firm';
+  const subject = owner ?? firm;
+
+  if (language === 'UR' && options.romanUrdu) {
+    // A Roman Urdu client got this line in Urdu script while the agent replied
+    // in Roman Urdu — two scripts in one message.
+    // Roman Urdu inflects for the speaker's gender just as Urdu script does.
+    const willAnswer = options.voiceGender === 'male' ? 'dunga' : 'dungi';
+    const handles = options.voiceEnabled
+      ? `Aap ke messages aur voice notes ka jawab main ${willAnswer}.`
+      : `Aap ke messages ka jawab main ${willAnswer}.`;
+    return owner
+      ? `Main ${owner} ka assistant hoon, khud wakeel nahi. ${handles} Bataiye aap ko kya chahiye?`
+      : `Main ${firm} ka assistant hoon, wakeel nahi. ${handles} Bataiye aap ko kya chahiye?`;
+  }
+
   if (language === 'UR') {
-    if (owner) {
-      return `میں ${owner} کا اسسٹنٹ ہوں، وکیل خود نہیں۔ آپ کے میسج اور وائس نوٹ کا جواب میں دوں گا۔ بتائیں آپ کو کیا چاہیے؟`;
-    }
-    return `میں ${firm} کا اسسٹنٹ ہوں، وکیل نہیں۔ آپ کے میسج اور وائس نوٹ کا جواب میں دوں گا۔ بتائیں آپ کو کیا چاہیے؟`;
+    // Urdu verbs agree with the speaker, and the configured voice is female by
+    // default — "دوں گا" from a female assistant reads as a different person.
+    const willAnswer = options.voiceGender === 'male' ? 'دوں گا' : 'دوں گی';
+    const handles = options.voiceEnabled
+      ? `آپ کے میسج اور وائس نوٹ کا جواب میں ${willAnswer}۔`
+      : `آپ کے میسج کا جواب میں ${willAnswer}۔`;
+    return owner
+      ? `میں ${owner} کا اسسٹنٹ ہوں، وکیل خود نہیں۔ ${handles} بتائیں آپ کو کیا چاہیے؟`
+      : `میں ${firm} کا اسسٹنٹ ہوں، وکیل نہیں۔ ${handles} بتائیں آپ کو کیا چاہیے؟`;
   }
-  if (owner) {
-    return `I'm ${owner}'s assistant, not ${owner} the lawyer. I'll answer your messages and voice notes. Tell me how I can help.`;
-  }
-  return `I'm the assistant for ${firm}, not a lawyer. I'll answer your messages and voice notes. Tell me how I can help.`;
+
+  const handles = options.voiceEnabled
+    ? "I'll answer your messages and voice notes."
+    : "I'll answer your messages.";
+  return owner
+    ? `I'm ${subject}'s assistant, not ${owner} the lawyer. ${handles} Tell me how I can help.`
+    : `I'm the assistant for ${subject}, not a lawyer. ${handles} Tell me how I can help.`;
 }
 
 export function renderOffTopicRedirect(ctx: AiRunContext, language: Language): string {
