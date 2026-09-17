@@ -9,7 +9,12 @@ import { isWithinCallHours } from './call-hours';
 import { answerWhatsappOffer, bridgeOptionsFromEnv, noopSession, type HeldRtcSession } from './webrtc-bridge';
 import type { NormalizedCallEvent } from './normalize-call-event';
 import { VoiceCallService } from './voice-call.service';
-import { VoiceReceptionistService, type ReceptionistSession } from './voice-receptionist.service';
+import {
+  newCallLanguageState,
+  VoiceReceptionistService,
+  type ReceptionistSession,
+} from './voice-receptionist.service';
+import type { CallLanguage } from './call-language';
 import { CallMediaLoop } from './call-media.loop';
 import { WavoipCallService } from './wavoip-call.service';
 import { CallSpeechService } from './call-speech.service';
@@ -20,6 +25,22 @@ export interface VoiceCallJob {
   instanceName: string;
   call: NormalizedCallEvent;
   utterance?: string;
+}
+
+/** Everything a ringing call resolved before it is answered or handed to chat. */
+interface CallSeed {
+  voiceCallId: string;
+  conversationId: string;
+  clientId: string;
+  firmName: string;
+  settings: ReceptionistSession['settings'];
+  tenantAllowlist: string[];
+}
+
+function missedCallInvite(language: CallLanguage): string {
+  return language === 'ur'
+    ? 'میں نے آپ کی کال دیکھی — یہیں جواب دیں، میں مدد کرتا ہوں۔'
+    : 'I saw your call — reply here and I will help.';
 }
 
 @Injectable()
@@ -66,9 +87,16 @@ export class VoiceSessionRunner {
       instanceName: job.instanceName,
     });
 
-    const connection = await this.uow.withTenant(job.tenantId, (tx) =>
-      this.connections.findByTenant(tx, job.tenantId),
-    );
+    const { connection, allowlist } = await this.uow.withTenant(job.tenantId, async (tx) => ({
+      connection: await this.connections.findByTenant(tx, job.tenantId),
+      allowlist:
+        (
+          await tx.tenant.findUnique({
+            where: { id: job.tenantId },
+            select: { aiProviderAllowlist: true },
+          })
+        )?.aiProviderAllowlist ?? [],
+    }));
     const settings = await this.profile.getAiSettings(job.tenantId);
     const firm = await this.profile.get(job.tenantId);
 
@@ -81,13 +109,22 @@ export class VoiceSessionRunner {
       return;
     }
 
+    const seed: CallSeed = {
+      voiceCallId: ringing.id,
+      conversationId,
+      clientId,
+      firmName: firm.displayName,
+      settings,
+      tenantAllowlist: allowlist,
+    };
+
     const connectionType = connection?.connectionType ?? 'baileys';
     if (connectionType === 'cloud_api') {
-      await this.connectCloud(job, ringing.id, conversationId, clientId, firm.displayName, settings);
+      await this.connectCloud(job, seed);
       return;
     }
     if (connectionType === 'baileys') {
-      await this.connectBaileys(job, ringing.id, conversationId, clientId, firm.displayName, settings);
+      await this.connectBaileys(job, seed);
       return;
     }
     await this.reject(
@@ -98,14 +135,7 @@ export class VoiceSessionRunner {
     );
   }
 
-  private async connectCloud(
-    job: VoiceCallJob,
-    voiceCallId: string,
-    conversationId: string,
-    clientId: string,
-    firmName: string,
-    settings: ReceptionistSession['settings'],
-  ): Promise<void> {
+  private async connectCloud(job: VoiceCallJob, seed: CallSeed): Promise<void> {
     let sdpAnswer: string | undefined;
     let rtcSession: HeldRtcSession = noopSession();
     if (job.call.sdpOffer) {
@@ -143,7 +173,7 @@ export class VoiceSessionRunner {
       rtcSession.close();
       await this.calls.complete({
         tenantId: job.tenantId,
-        voiceCallId,
+        voiceCallId: seed.voiceCallId,
         status: 'FAILED',
         disposition: 'ABANDONED',
         summary: 'Could not accept the WhatsApp call.',
@@ -152,53 +182,40 @@ export class VoiceSessionRunner {
       return;
     }
 
-    await this.calls.markAnswered(job.tenantId, voiceCallId);
-    this.beginTalk(job, voiceCallId, conversationId, clientId, firmName, settings, rtcSession);
+    await this.calls.markAnswered(job.tenantId, seed.voiceCallId);
+    this.beginTalk(job, seed, rtcSession);
   }
 
-  private async connectBaileys(
-    job: VoiceCallJob,
-    voiceCallId: string,
-    conversationId: string,
-    clientId: string,
-    firmName: string,
-    settings: ReceptionistSession['settings'],
-  ): Promise<void> {
+  private async connectBaileys(job: VoiceCallJob, seed: CallSeed): Promise<void> {
     // Claim SIP as soon as we know this is Baileys — do not burn ring time on
     // extra work. Wavoip often needs several seconds after CB:call to INVITE.
     const live = await this.wavoip.tryLiveSession({ fromWaPhone: job.call.fromWaPhone });
     if (live) {
-      await this.calls.markAnswered(job.tenantId, voiceCallId);
-      this.beginTalk(job, voiceCallId, conversationId, clientId, firmName, settings, live);
+      await this.calls.markAnswered(job.tenantId, seed.voiceCallId);
+      this.beginTalk(job, seed, live);
       return;
     }
     this.logger.warn(
       { providerCallId: job.call.providerCallId, fromWaPhone: job.call.fromWaPhone },
       'no Wavoip SIP INVITE — missed-call WhatsApp follow-up (not rejecting the ring)',
     );
-    await this.missedCallFollowUp(job, voiceCallId, conversationId, clientId, firmName, settings);
+    await this.missedCallFollowUp(job, seed);
   }
 
-  private beginTalk(
-    job: VoiceCallJob,
-    voiceCallId: string,
-    conversationId: string,
-    clientId: string,
-    firmName: string,
-    settings: ReceptionistSession['settings'],
-    rtcSession: HeldRtcSession,
-  ): void {
+  private beginTalk(job: VoiceCallJob, seed: CallSeed, rtcSession: HeldRtcSession): void {
     const session: ReceptionistSession = {
       tenantId: job.tenantId,
-      voiceCallId,
-      conversationId,
-      clientId,
+      voiceCallId: seed.voiceCallId,
+      conversationId: seed.conversationId,
+      clientId: seed.clientId,
       fromWaPhone: job.call.fromWaPhone,
-      firmName,
-      settings,
+      firmName: seed.firmName,
+      settings: seed.settings,
+      tenantAllowlist: seed.tenantAllowlist,
       offeredSlots: null,
       transcript: [],
       disposition: 'ABANDONED',
+      ...newCallLanguageState(seed.settings),
     };
     const greet = this.receptionist.greeting(session);
     session.transcript.push({ role: 'assistant', text: greet });
@@ -232,14 +249,7 @@ export class VoiceSessionRunner {
       });
   }
 
-  private async missedCallFollowUp(
-    job: VoiceCallJob,
-    voiceCallId: string,
-    conversationId: string,
-    clientId: string,
-    firmName: string,
-    settings: ReceptionistSession['settings'],
-  ): Promise<void> {
+  private async missedCallFollowUp(job: VoiceCallJob, seed: CallSeed): Promise<void> {
     // When Wavoip is configured, do NOT Evolution-reject: rejecting kills a
     // late SIP answer / webphone pickup. Caller can hang up; we continue on chat.
     if (!this.wavoip.isConfigured()) {
@@ -257,24 +267,26 @@ export class VoiceSessionRunner {
 
     const session: ReceptionistSession = {
       tenantId: job.tenantId,
-      voiceCallId,
-      conversationId,
-      clientId,
+      voiceCallId: seed.voiceCallId,
+      conversationId: seed.conversationId,
+      clientId: seed.clientId,
       fromWaPhone: job.call.fromWaPhone,
-      firmName,
-      settings,
+      firmName: seed.firmName,
+      settings: seed.settings,
+      tenantAllowlist: seed.tenantAllowlist,
       offeredSlots: null,
       transcript: [],
       disposition: 'INFO',
+      ...newCallLanguageState(seed.settings),
     };
     const greet = this.receptionist.greeting(session);
-    const body = `${greet} I saw your call — reply here and I will help.`;
+    const body = `${greet} ${missedCallInvite(session.language)}`;
     session.transcript.push({ role: 'assistant', text: body });
 
     try {
       await this.send.send(job.tenantId, {
         kind: 'text',
-        conversationId,
+        conversationId: seed.conversationId,
         toWaPhone: job.call.fromWaPhone,
         senderType: 'AI',
         body,
@@ -283,18 +295,18 @@ export class VoiceSessionRunner {
       this.logger.warn({ err: error instanceof Error ? error.message : 'send' }, 'missed-call WhatsApp text skipped');
     }
 
-    const note = await this.speech.synthesizeWhatsappNote(body, settings);
+    const note = await this.speech.synthesizeWhatsappNote(body, seed.settings, session.language);
     if (note) {
       try {
         await this.send.send(job.tenantId, {
           kind: 'audio',
-          conversationId,
+          conversationId: seed.conversationId,
           toWaPhone: job.call.fromWaPhone,
           senderType: 'AI',
           body,
           audioBuffer: note.audioBuffer,
           mimeType: note.mimeType,
-          audioPath: `tenants/${job.tenantId}/voice-calls/${voiceCallId}-followup.mp3`,
+          audioPath: `tenants/${job.tenantId}/voice-calls/${seed.voiceCallId}-followup.mp3`,
         });
       } catch (error) {
         this.logger.warn(
@@ -306,7 +318,7 @@ export class VoiceSessionRunner {
 
     await this.calls.complete({
       tenantId: job.tenantId,
-      voiceCallId,
+      voiceCallId: seed.voiceCallId,
       status: 'COMPLETED',
       disposition: 'INFO',
       summary: 'Missed WhatsApp call — AI continued on chat.',

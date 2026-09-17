@@ -19,9 +19,19 @@ export interface TtsVoice {
   accent: string;
 }
 
+export interface VoiceLibrary {
+  voices: TtsVoice[];
+  /** False when `voices` is a built-in fallback rather than the firm's library. */
+  complete: boolean;
+  /** Why the library could not be read, for the settings screen to show. */
+  reason?: string | undefined;
+}
+
 export interface TextToSpeechPort {
   isConfigured(): boolean;
   listVoices(): Promise<TtsVoice[]>;
+  /** Optional richer form; falls back to `listVoices` when unimplemented. */
+  loadVoices?(): Promise<VoiceLibrary>;
   synthesize(input: SynthesizeInput): Promise<SynthesizeResult>;
 }
 

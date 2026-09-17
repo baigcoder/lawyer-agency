@@ -24,6 +24,7 @@ function makeService(overrides: {
   openEscalation?: { id: string } | null;
   aiSettings?: Partial<ReturnType<typeof defaultAiSettings>>;
   clientText?: string;
+  messagePayload?: Record<string, unknown>;
   pendingAppointment?: {
     lawyerId: string;
     lawyerName: string;
@@ -48,7 +49,7 @@ function makeService(overrides: {
     direction: 'INBOUND' as const,
     contentType: 'TEXT',
     body: overrides.clientText ?? 'I need help',
-    payload: {},
+    payload: overrides.messagePayload ?? {},
     createdAt: new Date('2026-08-01T00:00:00Z'),
   };
 
@@ -239,6 +240,27 @@ describe('AiOrchestratorService', () => {
     expect(voiceReply.sendAiReply).toHaveBeenCalledWith(
       expect.objectContaining({
         responseText: expect.stringContaining('Thanks, a few questions.'),
+      }),
+    );
+  });
+
+  it('does not answer the same inbound message twice when the job is retried', async () => {
+    const { service, voiceReply, intake } = makeService({
+      messagePayload: { aiTurnCompletedAt: '2026-08-01T00:00:05.000Z' },
+    });
+    await service.process({ tenantId: 't1', conversationId: 'conv-1', messageId: 'msg-1' });
+    expect(voiceReply.sendAiReply).not.toHaveBeenCalled();
+    expect(intake.run).not.toHaveBeenCalled();
+  });
+
+  it('marks the turn complete after the reply is sent', async () => {
+    const { service, tx } = makeService();
+    await service.process({ tenantId: 't1', conversationId: 'conv-1', messageId: 'msg-1' });
+    expect(tx.message.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          payload: expect.objectContaining({ aiTurnCompletedAt: expect.any(String) }),
+        }),
       }),
     );
   });

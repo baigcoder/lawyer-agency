@@ -365,7 +365,7 @@ export default function OverviewPage() {
               </div>
             ) : null}
             {(isOwner ? inbox.isError : myInbox.isError) ? (
-              <p role="alert" className="text-sm text-muted-foreground">
+              <p role="status" className="text-sm text-muted-foreground">
                 {t('couldntLoadInbox')}{' '}
                 <Link href="/dashboard/inbox" className="underline">{t('openFullInbox')}</Link>
               </p>
@@ -540,9 +540,11 @@ export default function OverviewPage() {
                 <div key={guardrail.title} className="flex gap-3">
                   <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
                   <div>
-                    <p className="font-medium">{dir === 'rtl' ? guardrail.urdu : guardrail.title}</p>
+                    <p className="font-medium" lang={dir === 'rtl' ? 'ur' : 'en'}>
+                      {dir === 'rtl' ? guardrail.urdu : guardrail.title}
+                    </p>
                     {dir === 'rtl' && (
-                      <p className="mt-0.5 text-xs text-muted-foreground">{guardrail.title}</p>
+                      <p lang="en" className="mt-0.5 text-xs text-muted-foreground">{guardrail.title}</p>
                     )}
                     <p className="mt-0.5 text-xs text-muted-foreground">{guardrail.detail}</p>
                   </div>

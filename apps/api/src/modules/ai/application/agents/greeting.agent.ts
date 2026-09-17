@@ -74,6 +74,7 @@ export class GreetingAgent {
         ],
         outputSchema: greetingSchema,
         model: choice.model,
+        pricing: choice,
         promptVersionId: prompt.id,
         correlationId: params.correlationId,
         temperature: 0.55,

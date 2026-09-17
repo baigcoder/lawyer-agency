@@ -299,7 +299,11 @@ export function AiSettingsCard() {
           </div>
           <div className="rounded-lg border bg-muted/20 p-3 text-sm">
             <p className="text-xs font-medium text-muted-foreground">Preview</p>
-            <p className={cn('mt-1', introIsUrdu && 'font-urdu')} dir={introIsUrdu ? 'rtl' : 'ltr'}>
+            <p
+              className={cn('mt-1', introIsUrdu && 'font-urdu')}
+              dir={introIsUrdu ? 'rtl' : 'ltr'}
+              lang={introIsUrdu ? 'ur' : 'en'}
+            >
               {previewIntro || t('aiGreetingIntroEmpty')}
             </p>
           </div>

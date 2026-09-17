@@ -29,7 +29,9 @@ export function buildFirmPromptVariables(ctx: AiRunContext): Record<string, stri
     firmEnrichment,
     aiTone: aiSettings.aiTone,
     aiCustomInstructions: aiSettings.aiCustomInstructions.trim() || 'None',
-    aiAssumptions: buildAiAssumptionsBlock(aiSettings),
+    aiAssumptions: buildAiAssumptionsBlock(aiSettings, {
+      replyWillBeSpoken: ctx.replyWillBeSpoken,
+    }),
     conversationHistory: ctx.conversationHistory || 'No prior messages in this thread.',
     lastAiReply: ctx.lastAiReply.trim() || 'None yet.',
     intakeFields: formatIntakeFields(ctx.intakeFields),

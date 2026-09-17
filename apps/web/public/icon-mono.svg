@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="44 46 424 424" width="424" height="424" role="img" aria-label="Wakeel">
+  <!--
+    Monochrome silhouette of the Wakeel mark: white glyph, transparent ground,
+    no tile. This is the shape a notification *badge* needs — Android masks the
+    badge to a single colour, so feeding it the emerald tile would flatten to a
+    solid square. Same geometry as icon.svg, viewBox cropped square around the
+    glyph so it fills the canvas at badge sizes.
+  -->
+  <g fill="#ffffff">
+    <circle cx="256" cy="122" r="24"/>
+    <rect x="88" y="152" width="336" height="34" rx="17"/>
+    <rect x="125" y="182" width="22" height="34" rx="11"/>
+    <rect x="365" y="182" width="22" height="34" rx="11"/>
+    <path d="M60 214a76 56 0 0 0 152 0Z"/>
+    <path d="M300 214a76 56 0 0 0 152 0Z"/>
+    <rect x="239" y="186" width="34" height="200" rx="8"/>
+    <rect x="148" y="380" width="216" height="38" rx="19"/>
+  </g>
+</svg>

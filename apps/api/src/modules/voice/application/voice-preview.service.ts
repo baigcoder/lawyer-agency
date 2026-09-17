@@ -2,6 +2,7 @@ import { BadGatewayException, Inject, Injectable, ServiceUnavailableException } 
 import { z } from 'zod';
 import { TEXT_TO_SPEECH, type TextToSpeechPort, type TtsVoice } from './text-to-speech.port';
 
+
 export const voicePreviewInputSchema = z.object({
   voiceId: z.string().min(1).max(80),
   language: z.enum(['en', 'ur']),
@@ -56,9 +57,21 @@ function sanitizeDisplayName(raw: string | undefined): string {
 export class VoicePreviewService {
   constructor(@Inject(TEXT_TO_SPEECH) private readonly tts: TextToSpeechPort) {}
 
-  async listVoices(): Promise<{ configured: boolean; voices: TtsVoice[] }> {
-    const voices = await this.tts.listVoices();
-    return { configured: this.tts.isConfigured(), voices };
+  async listVoices(): Promise<{
+    configured: boolean;
+    voices: TtsVoice[];
+    libraryComplete: boolean;
+    libraryWarning?: string;
+  }> {
+    const library = this.tts.loadVoices
+      ? await this.tts.loadVoices()
+      : { voices: await this.tts.listVoices(), complete: true };
+    return {
+      configured: this.tts.isConfigured(),
+      voices: library.voices,
+      libraryComplete: library.complete,
+      ...(library.reason ? { libraryWarning: library.reason } : {}),
+    };
   }
 
   async preview(input: VoicePreviewInput): Promise<{ mimeType: string; audioBase64: string }> {

@@ -991,6 +991,7 @@ model DocumentChunk {
   @@index([tenantId, documentId])
   @@map("document_chunks")
   @@schema("app")
+  // HNSW index on embedding added in migration 0027 (Prisma can't express it).
 }
 
 model DocumentRequest {

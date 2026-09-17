@@ -64,7 +64,7 @@ export function TodaySchedule({
           </div>
         ) : null}
         {isError ? (
-          <p role="alert" className="text-sm text-muted-foreground">
+          <p role="status" className="text-sm text-muted-foreground">
             {t('couldntLoadSchedule')}
           </p>
         ) : null}

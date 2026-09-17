@@ -6,6 +6,11 @@ export interface LlmMessage {
   content: string;
 }
 
+export interface TokenPricing {
+  inputCostPer1kTokens: number; // USD
+  outputCostPer1kTokens: number; // USD
+}
+
 export interface AiCallOptions<T extends z.ZodType> {
   tenantId: string;
   agent: string;
@@ -13,6 +18,12 @@ export interface AiCallOptions<T extends z.ZodType> {
   outputSchema: T;
   /** Model chosen by the router (D-006); adapter falls back to AI_DEFAULT_MODEL when absent. */
   model?: string | null | undefined;
+  /**
+   * Rates for the chosen model, so `costMicros` reflects what was actually
+   * billed. Without it the adapter charges list price for gpt-4o-mini, even
+   * for a free model.
+   */
+  pricing?: TokenPricing | undefined;
   temperature?: number;
   maxTokens?: number;
   /** Per-call fetch abort. Adapter default is 20s. */
@@ -77,11 +88,9 @@ export interface Retriever {
 
 export const RETRIEVER = Symbol('RETRIEVER');
 
-export interface ModelChoice {
+export interface ModelChoice extends TokenPricing {
   provider: string;
   model: string;
-  inputCostPer1kTokens: number; // USD
-  outputCostPer1kTokens: number; // USD
 }
 
 export interface ModelRouter {

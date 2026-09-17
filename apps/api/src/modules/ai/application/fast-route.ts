@@ -1,7 +1,7 @@
 import type { AgentIntent } from '../domain/types';
 import { isCasualOffTopic } from './firm-scope';
 import { isShortGreeting } from './dynamic-reply-rules';
-import { isDocumentAsk } from './document-collection';
+import { isDocumentAsk, isDocumentQuestion } from './document-collection';
 
 export interface FastRouteDecision {
   intent: AgentIntent;
@@ -81,6 +81,9 @@ export function isAppointmentAsk(text: string): boolean {
 
 function isGeneralFaq(text: string): boolean {
   if (isNewMatter(text)) return false;
+  // "Which documents do you need?" is a knowledge-base answer, not a request
+  // for the client to upload something.
+  if (isDocumentQuestion(text)) return true;
   return /\b(fee|fees|charges|kitni fee|consultation fee|office hours|timings?|address|location|kahan ho|documents? (needed|required)|how long does|process (for|of)|procedure|kitna time)\b/i.test(
     text,
   );

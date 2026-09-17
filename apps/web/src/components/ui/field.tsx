@@ -1,36 +1,77 @@
-import { cloneElement, useId, type ReactElement, type ReactNode } from 'react';
+import { cloneElement, isValidElement, useId, type ReactElement, type ReactNode } from 'react';
 import { Label } from '@/components/ui/label';
 
 /**
- * Shared form Field (Batch 2c): associates the label with its control via a
- * generated id (useId) and wires the error through `aria-describedby` so
- * screen readers announce it. Replaces the two page-local Field helpers
- * that left labels unassociated (setup ×8 fields, settings ×4, payments).
+ * Shared form Field: associates the label with its control via a generated id
+ * (useId), and wires the hint and error through `aria-describedby` +
+ * `aria-invalid` so screen readers announce them and the primitives'
+ * `aria-invalid:*` variants actually fire.
  *
- * If the child is a single element, its `id` is set automatically; pass
- * `id` explicitly only if you need a specific one.
+ * The id is cloned onto a single child element. A child *component* only
+ * receives it if it forwards `id`/`aria-*` down to its DOM node — `Input`,
+ * `Textarea` and `SelectTrigger` all do. For a child that does not (RHF's
+ * `Controller`, or several controls at once), pass `htmlFor` and set that same
+ * id on the real control: the label then points at something that exists
+ * instead of at a generated id nothing carries, and the child owns its own
+ * aria wiring.
+ *
+ * Pass `id` on the child directly when you need a specific one; it wins over
+ * the generated id.
  */
-export function Field({
-  label,
-  hint,
-  error,
-  children,
-}: {
+interface FieldProps {
   label: string;
   hint?: string;
   error?: string;
+  /**
+   * Id of the real control, for children that cannot receive a cloned `id`.
+   * When set, nothing is cloned — the caller owns `id` and the aria attributes.
+   */
+  htmlFor?: string;
   children: ReactNode;
-}) {
+}
+
+/** The props Field injects into a single element child. */
+type InjectedProps = {
+  id?: string;
+  'aria-describedby'?: string;
+  'aria-invalid'?: boolean;
+};
+
+export function Field({ label, hint, error, htmlFor, children }: FieldProps) {
   const generatedId = useId();
+  const hintId = `${generatedId}-hint`;
   const errorId = `${generatedId}-error`;
+
+  // Only a single element child can be cloned. Arrays and plain text cannot,
+  // and an explicit htmlFor means the caller has taken over.
+  const cloneable = htmlFor === undefined && isValidElement(children);
+  const child = cloneable ? (children as ReactElement<InjectedProps>) : undefined;
+
+  const controlId = htmlFor ?? child?.props.id ?? (cloneable ? generatedId : undefined);
+
+  const describedBy =
+    [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(' ') || undefined;
 
   return (
     <div className="space-y-1.5">
-      <Label htmlFor={generatedId}>{label}</Label>
-      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
-      {/* Clone the child so its `id` is linked to the label. React 19 lets
-          us spread `id` onto a single child element without a wrapper. */}
-      {cloneChildWithId(children, generatedId)}
+      {/* No id to point at means no `for`: a dangling htmlFor reports an
+          association it cannot deliver, which is worse than plain text. */}
+      <Label {...(controlId ? { htmlFor: controlId } : {})}>{label}</Label>
+
+      {hint ? (
+        <p id={hintId} className="text-xs text-muted-foreground">
+          {hint}
+        </p>
+      ) : null}
+
+      {child
+        ? cloneElement(child, {
+            id: controlId,
+            'aria-describedby': describedBy,
+            'aria-invalid': error ? true : undefined,
+          })
+        : children}
+
       {error ? (
         <p id={errorId} role="alert" className="text-sm text-destructive">
           {error}
@@ -38,23 +79,4 @@ export function Field({
       ) : null}
     </div>
   );
-}
-
-function cloneChildWithId(children: ReactNode, id: string): ReactNode {
-  if (Array.isArray(children)) {
-    // For multiple children we can't safely inject an id; render as-is and
-    // let the caller pass ids explicitly on each control.
-    return children;
-  }
-  if (
-    typeof children === 'object' &&
-    children !== null &&
-    'props' in children
-  ) {
-    return cloneElement(
-      children as ReactElement<{ id?: string }>,
-      { id },
-    );
-  }
-  return children;
 }

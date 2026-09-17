@@ -89,6 +89,12 @@ const envSchema = z
     ELEVENLABS_API_KEY: z.string().min(1).optional(),
     ELEVENLABS_VOICE_ID_MALE: z.string().min(1).optional(),
     ELEVENLABS_VOICE_ID_FEMALE: z.string().min(1).optional(),
+    // Urdu is spoken by a different voice than English on purpose: the English
+    // stock voices can pronounce Urdu but carry an anglophone accent. A Hindi
+    // or Urdu voice sounds native to a Pakistani client (same spoken language,
+    // different script). Set these to voice ids from your ElevenLabs library.
+    ELEVENLABS_VOICE_ID_URDU_MALE: z.string().min(1).optional(),
+    ELEVENLABS_VOICE_ID_URDU_FEMALE: z.string().min(1).optional(),
     // Whisper STT — optional overrides when chat uses Groq but STT should hit OpenAI (or vice versa)
     OPENAI_WHISPER_API_KEY: z.string().min(1).optional(),
     OPENAI_WHISPER_BASE_URL: z.url().optional(),

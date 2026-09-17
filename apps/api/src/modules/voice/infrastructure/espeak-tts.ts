@@ -7,7 +7,7 @@ const FFMPEG_TIMEOUT_MS = 20_000;
 
 /** Local TTS when ElevenLabs is unset — Docker runner already installs espeak-ng. */
 export async function synthesizeWithEspeak(input: SynthesizeInput): Promise<SynthesizeResult> {
-  const spoken = prepareSpokenTtsText(input.text).slice(0, 800);
+  const spoken = prepareSpokenTtsText(input.text, input.voiceGender).slice(0, 800);
   if (!spoken) throw new Error('espeak: empty text');
   const wav = await spawnStdout(
     'espeak-ng',

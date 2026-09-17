@@ -4,7 +4,7 @@ import { toInputJson } from '../../../common/persistence/json';
 import { DOMAIN_EVENTS } from '../../../common/events/domain-events';
 import { OutboxWriter } from '../../../common/events/outbox-writer';
 import { SendService } from '../../whatsapp/application/send.service';
-import { VoiceReplyService } from '../../voice/application/voice-reply.service';
+import { shouldUseVoiceReply, VoiceReplyService } from '../../voice/application/voice-reply.service';
 import { RETRIEVER, type Retriever } from '../../rag/application/retriever.port';
 import { matchPakistanLawyerKnowledge } from '../../rag/application/pakistan-lawyer-knowledge';
 import { PakistanKbSeedService } from '../../rag/application/pakistan-kb-seed.service';
@@ -115,6 +115,22 @@ function isHardHandoff(triggerType: string, intent: AgentIntent): boolean {
 }
 
 /**
+ * Written onto the inbound message once its turn has produced its outcome, so
+ * a retried domain event does not answer the same message twice. Recorded after
+ * the send, not before: losing a reply to a crash is recoverable by the client
+ * writing again, whereas a client receiving the same answer three times is not.
+ */
+const TURN_COMPLETED_KEY = 'aiTurnCompletedAt';
+
+function turnCompletedMarker(): Record<string, string> {
+  return { [TURN_COMPLETED_KEY]: new Date().toISOString() };
+}
+
+export function isTurnCompleted(payload: unknown): boolean {
+  return typeof asFieldRecord(payload)[TURN_COMPLETED_KEY] === 'string';
+}
+
+/**
  * Main AI orchestrator (Phase 7). Triggered by the `message.inbound.received`
  * domain event, it:
  *  1. Loads conversation + latest message
@@ -155,9 +171,36 @@ export class AiOrchestratorService {
   ) {}
 
   async process(params: ProcessInboundMessage): Promise<void> {
-    if (await this.tryPaymentDetailsIntercept(params)) return;
-    if (await this.tryAppointmentIntercept(params)) return;
-    if (await this.tryDocumentRequestIntercept(params)) return;
+    // One load for all three intercepts. Each used to open its own tenant
+    // transaction and re-read the same conversation, message and intake row.
+    const inbound = await this.loadInboundTurn(params);
+    if (!inbound) return;
+
+    // BullMQ retries the whole domain event when anything downstream throws —
+    // including a WhatsApp send that already delivered. Without this the client
+    // receives the same AI reply two or three times.
+    if (isTurnCompleted(inbound.payload)) {
+      this.logger.log(
+        { conversationId: params.conversationId, messageId: params.messageId },
+        'inbound message already answered — skipping duplicate AI turn',
+      );
+      return;
+    }
+
+    // Each intercept sends its own WhatsApp message and then returns true, so
+    // completion is marked here — once, after the send, for every branch.
+    if (await this.tryPaymentDetailsIntercept(params, inbound)) {
+      await this.markTurnCompleted(params, inbound);
+      return;
+    }
+    if (await this.tryAppointmentIntercept(params, inbound)) {
+      await this.markTurnCompleted(params, inbound);
+      return;
+    }
+    if (await this.tryDocumentRequestIntercept(params, inbound)) {
+      await this.markTurnCompleted(params, inbound);
+      return;
+    }
 
     const outcome = await this.uow.withTenant(params.tenantId, async (tx): Promise<OrchestratorSend> => {
       const conversation = await tx.conversation.findUnique({
@@ -198,6 +241,9 @@ export class AiOrchestratorService {
         tx,
         retrievedChunks: [],
       });
+      // Set before any agent runs, so the prompt can require Urdu script when
+      // the answer is going to be spoken rather than read.
+      context.replyWillBeSpoken = shouldUseVoiceReply(context.aiSettings, message.contentType);
       const retrievedChunks = selectRelevantChunks([
         ...(await retrievalPromise),
         ...(likelyNeedsRag ? matchPakistanLawyerKnowledge(clientText) : []),
@@ -499,6 +545,7 @@ export class AiOrchestratorService {
         language: outcome.language,
         inboundContentType: outcome.inboundContentType,
       });
+      await this.markTurnCompleted(params, inbound);
       return;
     }
 
@@ -511,8 +558,14 @@ export class AiOrchestratorService {
         language: outcome.language,
         inboundContentType: outcome.inboundContentType,
       });
+      await this.markTurnCompleted(params, inbound);
       await this.enrichHandoffSituation(params.tenantId, params.correlationId, outcome);
+      return;
     }
+
+    // `none` still ran the turn: it queued a draft for approval, or the send
+    // policy chose silence. Re-running would duplicate the draft.
+    await this.markTurnCompleted(params, inbound);
   }
 
   private async enrichHandoffSituation(
@@ -565,25 +618,11 @@ export class AiOrchestratorService {
    * Send stored JazzCash/Easypaisa/bank numbers outside the AI transaction so
    * nested `withTenant` + WhatsApp send cannot deadlock the pool.
    */
-  private async tryPaymentDetailsIntercept(params: ProcessInboundMessage): Promise<boolean> {
-    const loaded = await this.uow.withTenant(params.tenantId, async (tx) => {
-      const conversation = await tx.conversation.findUnique({
-        where: { id: params.conversationId },
-        select: { clientId: true, caseId: true },
-      });
-      if (!conversation) return null;
-      const message = await tx.message.findFirst({ where: { id: params.messageId } });
-      if (!message || message.direction !== 'INBOUND') return null;
-      return {
-        clientText: message.body ?? '',
-        clientId: conversation.clientId,
-        caseId: conversation.caseId,
-        messageId: message.id,
-        createdAt: message.createdAt,
-        payload: message.payload,
-      };
-    });
-    if (!loaded || !this.paymentInstructions.isDetailsRequest(loaded.clientText)) return false;
+  private async tryPaymentDetailsIntercept(
+    params: ProcessInboundMessage,
+    loaded: InboundTurn,
+  ): Promise<boolean> {
+    if (!this.paymentInstructions.isDetailsRequest(loaded.clientText)) return false;
 
     const sent = await this.paymentInstructions.handleClientRequest(params.tenantId, {
       clientId: loaded.clientId,
@@ -609,10 +648,10 @@ export class AiOrchestratorService {
    * Offer or book a real lawyer slot outside the AI transaction so nested
    * `withTenant` + WhatsApp send cannot deadlock (same rule as payments).
    */
-  private async tryAppointmentIntercept(params: ProcessInboundMessage): Promise<boolean> {
-    const loaded = await this.loadInboundTurn(params);
-    if (!loaded) return false;
-
+  private async tryAppointmentIntercept(
+    params: ProcessInboundMessage,
+    loaded: InboundTurn,
+  ): Promise<boolean> {
     const language = detectLanguage(loaded.clientText, ['EN', 'UR', 'ROMAN_URDU']);
     const pending = parsePendingAppointment(loaded.extractedFields);
     const choice = parseSlotChoice(loaded.clientText, pending);
@@ -712,9 +751,11 @@ export class AiOrchestratorService {
    * Create a PENDING document request (and a case if the conversation has none)
    * after the inbound load transaction, then ask the client to send the file.
    */
-  private async tryDocumentRequestIntercept(params: ProcessInboundMessage): Promise<boolean> {
-    const loaded = await this.loadInboundTurn(params);
-    if (!loaded || !isDocumentAsk(loaded.clientText)) return false;
+  private async tryDocumentRequestIntercept(
+    params: ProcessInboundMessage,
+    loaded: InboundTurn,
+  ): Promise<boolean> {
+    if (!isDocumentAsk(loaded.clientText)) return false;
 
     const language = detectLanguage(loaded.clientText, ['EN', 'UR', 'ROMAN_URDU']);
     const description = documentRequestDescription(loaded.clientText, language);
@@ -827,6 +868,36 @@ export class AiOrchestratorService {
         },
       });
     });
+  }
+
+  /**
+   * Records that this inbound message has had its answer sent. Re-reads the
+   * payload inside the transaction so it merges with whatever the turn wrote
+   * (aiIntent, intake fields) instead of clobbering it with a stale copy.
+   */
+  private async markTurnCompleted(params: ProcessInboundMessage, loaded: InboundTurn): Promise<void> {
+    try {
+      await this.uow.withTenant(params.tenantId, async (tx) => {
+        const current = await tx.message.findFirst({ where: { id: loaded.messageId } });
+        if (!current) return;
+        await tx.message.update({
+          where: { id_createdAt: { id: loaded.messageId, createdAt: loaded.createdAt } },
+          data: {
+            payload: toInputJson({
+              ...asFieldRecord(current.payload),
+              ...turnCompletedMarker(),
+            }),
+          },
+        });
+      });
+    } catch (error) {
+      // A missing marker only risks a duplicate reply on retry; never fail the
+      // turn (and re-send) over bookkeeping.
+      this.logger.warn(
+        { conversationId: params.conversationId, messageId: loaded.messageId, error },
+        'could not mark AI turn complete',
+      );
+    }
   }
 
   private async tagInboundIntent(

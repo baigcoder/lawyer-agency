@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { concatInt16, rmsInt16 } from './pcm-audio';
-import { pcmDurationMs, SPEECH_RMS, vadAction } from './call-vad';
-import { CallSpeechService, speechLanguage } from './call-speech.service';
+import { BARGE_IN_MS, BARGE_IN_RMS, pcmDurationMs, SPEECH_RMS, vadAction } from './call-vad';
+import { CallSpeechService } from './call-speech.service';
+import { line } from './call-language';
 import type { HeldRtcSession } from './webrtc-bridge';
 import { VoiceReceptionistService, type ReceptionistSession } from './voice-receptionist.service';
 
@@ -41,6 +42,27 @@ export class CallMediaLoop {
     let silenceMs = 0;
     let turn: Promise<void> = Promise.resolve();
 
+    /** Non-null only while the assistant is speaking; aborting is barge-in. */
+    let speaking: AbortController | null = null;
+    let bargeInMs = 0;
+
+    /**
+     * Plays one spoken turn. Inbound audio stays unmuted during playback so the
+     * caller can interrupt; without this the caller had to sit through every
+     * word before being heard at all.
+     */
+    const speak = async (text: string): Promise<void> => {
+      const pcm = await this.speech.synthesize(text, session.settings, session.language);
+      const controller = new AbortController();
+      speaking = controller;
+      bargeInMs = 0;
+      try {
+        await rtc.sendPcm48kMono(pcm, { signal: controller.signal });
+      } finally {
+        if (speaking === controller) speaking = null;
+      }
+    };
+
     const flush = (): void => {
       if (chunks.length === 0) return;
       const pcm = concatInt16(chunks);
@@ -49,20 +71,25 @@ export class CallMediaLoop {
       turn = turn
         .then(async () => {
           if (rtc.isClosed() || hangUp) return;
+          // Deaf only while thinking — playback below stays interruptible.
           muteInbound = true;
-          const language = speechLanguage(
-            session.transcript.at(-1)?.text ?? '',
-            session.settings.aiLanguagePolicy,
-          );
-          const heard = await this.speech.transcribe(pcm, language);
-          if (!heard) {
+          try {
+            // A `mirror` call is transcribed with auto-detect until the
+            // caller's own words lock it; deriving the language from our own
+            // last line pinned every call to English.
+            const heard = await this.speech.transcribe(
+              pcm,
+              session.languageLocked ? session.language : null,
+            );
+            if (!heard) return;
+            this.receptionist.lockLanguage(session, heard.text, heard.reportedLanguage);
+            const reply = await this.receptionist.processUtterance(session, heard.text);
             muteInbound = false;
-            return;
+            await speak(reply);
+            if (session.shouldHangUp) hangUp = true;
+          } finally {
+            muteInbound = false;
           }
-          const reply = await this.receptionist.processUtterance(session, heard);
-          await rtc.sendPcm48kMono(await this.speech.synthesize(reply, session.settings));
-          if (session.shouldHangUp) hangUp = true;
-          muteInbound = false;
         })
         .catch((error: unknown) => {
           muteInbound = false;
@@ -77,6 +104,17 @@ export class CallMediaLoop {
       if (muteInbound || hangUp || rtc.isClosed()) return;
       const rms = rmsInt16(pcm);
       const frameMs = pcmDurationMs(pcm);
+
+      if (speaking) {
+        // Only a clearly louder, sustained voice cuts the assistant off, so
+        // echo and room noise do not chop every reply in half.
+        bargeInMs = rms >= BARGE_IN_RMS ? bargeInMs + frameMs : 0;
+        if (bargeInMs < BARGE_IN_MS) return;
+        this.logger.log({ voiceCallId: session.voiceCallId }, 'caller barged in — stopping playback');
+        speaking.abort();
+        speaking = null;
+      }
+
       if (rms >= SPEECH_RMS) {
         chunks.push(pcm);
         silenceMs = 0;
@@ -87,12 +125,12 @@ export class CallMediaLoop {
       if (vadAction(rms, bufferedMs, silenceMs) === 'flush') flush();
     });
 
+    muteInbound = false;
     try {
-      await rtc.sendPcm48kMono(await this.speech.synthesize(greeting, session.settings));
+      await speak(greeting);
     } catch (error) {
       this.logger.warn({ err: error instanceof Error ? error.message : 'greet' }, 'greeting TTS failed');
     }
-    muteInbound = false;
 
     const deadline = Date.now() + CALL_LIMIT_MS;
     while (!rtc.isClosed() && !hangUp && Date.now() < deadline) {
@@ -103,12 +141,7 @@ export class CallMediaLoop {
     if (hangUp || (!rtc.isClosed() && Date.now() >= deadline)) {
       if (!hangUp && !rtc.isClosed()) {
         try {
-          await rtc.sendPcm48kMono(
-            await this.speech.synthesize(
-              'I need to end this call now. Please continue on WhatsApp.',
-              session.settings,
-            ),
-          );
+          await speak(line('callLimit', session.language));
         } catch {
           /* ignore */
         }

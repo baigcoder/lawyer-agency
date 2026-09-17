@@ -69,6 +69,7 @@ export class CaseUpdateAgent {
       ],
       outputSchema: caseUpdateSchema,
       model: choice.model,
+      pricing: choice,
       promptVersionId: prompt.id,
       correlationId: params.correlationId,
       temperature: 0.45,

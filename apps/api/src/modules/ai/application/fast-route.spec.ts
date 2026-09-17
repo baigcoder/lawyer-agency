@@ -49,11 +49,24 @@ describe('fastRoute', () => {
       fastRoute({ clientText: 'I need an appointment', hasOpenCase: false, hasIntakeFields: false })?.intent,
     ).toBe('APPOINTMENT');
     expect(
-      fastRoute({ clientText: 'kya documents chahiye', hasOpenCase: false, hasIntakeFields: false })?.intent,
-    ).toBe('DOCUMENT_REQUEST');
-    expect(
       fastRoute({ clientText: 'I will send documents', hasOpenCase: false, hasIntakeFields: false })?.intent,
     ).toBe('DOCUMENT_REQUEST');
+  });
+
+  it('answers "which documents?" from the knowledge base instead of opening a request', () => {
+    expect(
+      fastRoute({ clientText: 'kya documents chahiye', hasOpenCase: false, hasIntakeFields: false })?.intent,
+    ).toBe('FAQ');
+    expect(
+      fastRoute({ clientText: 'which papers do you need from me?', hasOpenCase: false, hasIntakeFields: false })
+        ?.intent,
+    ).toBe('FAQ');
+    // A matter keyword still wins — "khula" makes this an intake turn, and the
+    // intake agent answers the document question with its own task focus.
+    expect(
+      fastRoute({ clientText: 'what documents are required for khula?', hasOpenCase: false, hasIntakeFields: false })
+        ?.intent,
+    ).toBe('INTAKE');
   });
 });
 

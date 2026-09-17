@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
  */
 export default function NotFoundPage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-4 text-center">
+    <main id="main" className="flex min-h-screen flex-col items-center justify-center gap-4 p-4 text-center">
       <div className="flex items-center gap-2 text-lg font-semibold">
         <Scale className="h-5 w-5" aria-hidden />
         Wakeel

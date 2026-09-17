@@ -1,7 +1,8 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Inject, Logger } from '@nestjs/common';
-import type { Job } from 'bullmq';
+import { DelayedError, type Job } from 'bullmq';
 import { QUEUES } from './queue.constants';
+import { isRetryLater } from '../errors/retry-later.error';
 import {
   DOMAIN_EVENT_HANDLERS,
   type DomainEventHandler,
@@ -21,7 +22,7 @@ export class DomainEventsDispatcher extends WorkerHost {
     super();
   }
 
-  async process(job: Job<DomainEventJob>): Promise<void> {
+  async process(job: Job<DomainEventJob>, token?: string): Promise<void> {
     const matches = this.handlers.filter((h) => h.eventType === job.name);
     if (matches.length === 0) {
       this.logger.debug({ eventType: job.name }, 'no handler registered for domain event');
@@ -38,6 +39,20 @@ export class DomainEventsDispatcher extends WorkerHost {
     try {
       await Promise.all(matches.map((h) => h.handle(event)));
     } catch (error) {
+      // Contention, not failure: another worker holds the resource this job
+      // needs. Re-queue it after a short delay so it neither burns a retry
+      // attempt nor occupies a worker slot waiting.
+      if (isRetryLater(error)) {
+        if (token) {
+          await job.moveToDelayed(Date.now() + error.delayMs, token);
+          throw new DelayedError(error.message);
+        }
+        // No token means we cannot hand the job back cleanly; a plain throw
+        // still retries it under the queue's own backoff.
+        this.logger.debug({ eventType: job.name }, 'deferring job without a worker token');
+        throw error;
+      }
+
       // Permanent failures (invalid recipient, unknown instance, …) can never
       // succeed on retry, and each retry re-runs the AI pipeline. Discard the
       // job so it fails once with the real reason instead of burning the

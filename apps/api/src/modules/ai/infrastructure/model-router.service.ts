@@ -75,6 +75,16 @@ const CATALOG: Record<string, ModelChoice & Pricing> = {
   },
 };
 
+/**
+ * Providers with a real adapter. `anthropic` and `google` are registry stubs
+ * that throw on every call, so routing to them is never a useful choice.
+ */
+const IMPLEMENTED_PROVIDERS = new Set(['openai']);
+
+function isCallable(entry: ModelChoice): boolean {
+  return IMPLEMENTED_PROVIDERS.has(entry.provider);
+}
+
 const AGENT_DEFAULTS: Record<string, string> = {
   router: 'groq/openai/gpt-oss-20b',
   intake: 'groq/openai/gpt-oss-120b',
@@ -102,20 +112,27 @@ export class ModelRouterService implements ModelRouter {
     const preferred = AGENT_DEFAULTS[agent] ?? this.defaultKey();
     const allowedKeys = tenantAllowlist.length > 0 ? tenantAllowlist : Object.keys(CATALOG);
     const preferredEntry = CATALOG[preferred];
-    if (preferredEntry && allowedKeys.includes(preferred)) {
+    if (preferredEntry && allowedKeys.includes(preferred) && isCallable(preferredEntry)) {
       return toChoice(preferredEntry);
     }
 
     const candidates = allowedKeys
       .map((k) => CATALOG[k])
       .filter((c): c is (ModelChoice & Pricing) => c !== undefined)
+      // An allow-list entry for a provider with no working adapter would be
+      // chosen happily and then fail every single call. Skip it instead.
+      .filter(isCallable)
       .sort((a, b) => a.input + a.output - (b.input + b.output));
 
     const chosen =
       candidates.find((c) => c.model === preferredEntry?.model) ??
       candidates.find((c) => `${c.provider}/${c.model}` === preferred) ??
       candidates[0];
-    if (!chosen) throw new Error(`No allowed AI model for tenant ${tenantId}`);
+    if (!chosen) {
+      throw new Error(
+        `No usable AI model for tenant ${tenantId}: the allow-list has no model from an implemented provider (${[...IMPLEMENTED_PROVIDERS].join(', ')}).`,
+      );
+    }
     return toChoice(chosen);
   }
 

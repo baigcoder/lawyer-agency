@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { Inter, Geist_Mono, Noto_Nastaliq_Urdu } from 'next/font/google';
 import type { ReactNode } from 'react';
 import { Providers } from '@/components/providers';
+import { LanguageScript } from '@/components/language-script';
 import { ThemeScript } from '@/components/theme-script';
 import { clerkEnabled } from '@/lib/env';
 import './globals.css';
@@ -19,13 +20,18 @@ export const metadata: Metadata = {
   description:
     'Multi-tenant platform letting law firms run client intake, communication, and case coordination over WhatsApp — with AI that assists lawyers, never replaces them.',
   applicationName: 'Wakeel',
+  manifest: '/manifest.webmanifest',
   icons: {
     icon: [
-      { url: '/icon.svg', type: 'image/svg+xml' },
-      { url: '/favicon.ico', sizes: 'any' },
+      // .ico first so legacy consumers that ignore `type` still resolve; modern
+      // browsers prefer the SVG and scale it cleanly at any tab density.
+      { url: '/favicon.ico', sizes: '16x16 32x32 48x48' },
+      { url: '/icon.svg', type: 'image/svg+xml', sizes: 'any' },
+      { url: '/icon-192.png', type: 'image/png', sizes: '192x192' },
+      { url: '/icon-512.png', type: 'image/png', sizes: '512x512' },
     ],
     shortcut: '/favicon.ico',
-    apple: '/icon.png',
+    apple: [{ url: '/icon.png', sizes: '180x180', type: 'image/png' }],
   },
 };
 
@@ -39,7 +45,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <body className={`${inter.variable} ${geistMono.variable} ${urduNastaliq.variable} font-sans antialiased`} suppressHydrationWarning>
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"
+        className="sr-only focus:not-sr-only focus:absolute focus:start-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"
       >
         Skip to content
       </a>
@@ -51,6 +57,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" suppressHydrationWarning>
       <head>
         <ThemeScript />
+        <LanguageScript />
       </head>
       {clerkEnabled ? (
         <ClerkProvider

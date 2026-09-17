@@ -173,7 +173,7 @@ export function OwnerProfileCard() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="bioUr">Bio (Urdu)</Label>
-              <Textarea id="bioUr" rows={3} placeholder="اردو میں تعارف…" dir="rtl" {...form.register('bioUr')} />
+              <Textarea id="bioUr" rows={3} placeholder="اردو میں تعارف…" dir="rtl" lang="ur" {...form.register('bioUr')} />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">

@@ -10,6 +10,11 @@ const SCRIBE_MODELS = ['scribe_v2', 'scribe_v1'] as const;
 export class ElevenLabsSttClient implements SpeechToTextPort {
   private readonly logger = new Logger(ElevenLabsSttClient.name);
   private readonly apiKey: string | undefined;
+  /**
+   * The model that last worked. An account without `scribe_v2` access paid a
+   * wasted round trip on every single transcription before falling to v1.
+   */
+  private preferredModel: string | null = null;
 
   constructor(config: ConfigService<Env, true>) {
     this.apiKey = config.get('ELEVENLABS_API_KEY', { infer: true });
@@ -23,12 +28,17 @@ export class ElevenLabsSttClient implements SpeechToTextPort {
     if (!this.apiKey) throw new Error('Speech-to-text is not configured (set ELEVENLABS_API_KEY)');
 
     let lastError: Error | null = null;
-    for (const model of SCRIBE_MODELS) {
+    for (const model of sttModelOrder(this.preferredModel)) {
       try {
-        return await this.transcribeWithModel(input, model);
+        const result = await this.transcribeWithModel(input, model);
+        this.preferredModel = model;
+        return result;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
         this.logger.warn({ model, err: lastError.message }, 'elevenlabs scribe failed');
+        // A bad key or a rate limit fails identically on the other model;
+        // retrying it only burns a second request and more latency.
+        if (isSttFatal(lastError)) break;
       }
     }
     throw lastError ?? new Error('ElevenLabs speech-to-text failed');
@@ -67,4 +77,15 @@ export function elevenLabsLanguageCode(hint: TranscribeInput['languageHint']): s
   if (hint === 'ur') return 'urd';
   if (hint === 'en') return 'eng';
   return undefined;
+}
+
+/** Try the model that worked last time first, then the rest in order. */
+export function sttModelOrder(preferred: string | null): string[] {
+  const rest = SCRIBE_MODELS.filter((model) => model !== preferred);
+  return preferred ? [preferred, ...rest] : [...SCRIBE_MODELS];
+}
+
+/** Failures that the other Scribe model would hit identically. */
+export function isSttFatal(error: Error): boolean {
+  return /HTTP (401|403|429)\b/.test(error.message);
 }
