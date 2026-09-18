@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import type { ConfigService } from '@nestjs/config';
-import { OpenAiAdapter } from './openai.adapter';
+import { dropNulls, OpenAiAdapter } from './openai.adapter';
 
 function makeAdapter(): OpenAiAdapter {
   const values: Record<string, string> = {
@@ -83,6 +83,61 @@ describe('OpenAiAdapter latency', () => {
     } finally {
       globalThis.fetch = original;
       restore();
+    }
+  });
+});
+
+describe('dropNulls', () => {
+  it('removes null-valued keys, which the model uses to mean "no value"', () => {
+    expect(dropNulls({ responseText: 'hi', handoffReason: null })).toEqual({ responseText: 'hi' });
+  });
+
+  it('cleans objects inside arrays, such as citations', () => {
+    expect(dropNulls({ citations: [{ chunkId: 'a', kbId: null }] })).toEqual({ citations: [{ chunkId: 'a' }] });
+  });
+
+  it('never changes the length of a list', () => {
+    expect(dropNulls({ items: ['a', null, 'b'] })).toEqual({ items: ['a', null, 'b'] });
+  });
+
+  it('leaves scalars and falsy non-null values alone', () => {
+    expect(dropNulls({ n: 0, b: false, s: '' })).toEqual({ n: 0, b: false, s: '' });
+    expect(dropNulls('text')).toBe('text');
+  });
+});
+
+describe('OpenAiAdapter with null optional fields', () => {
+  it('accepts `"handoffReason": null` first time instead of spending a retry', async () => {
+    const original = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{ message: { content: '{"responseText":"Aap ka masla samajh aa gaya","needsLawyer":false,"handoffReason":null}' } }],
+          usage: { prompt_tokens: 10, completion_tokens: 5 },
+        }),
+      } as unknown as Response;
+    }) as typeof globalThis.fetch;
+    try {
+      const result = await makeAdapter().call<{ responseText: string; handoffReason?: string }>({
+        tenantId: 't1',
+        agent: 'intake',
+        messages: [{ role: 'user', content: 'hi' }],
+        outputSchema: z.object({
+          responseText: z.string(),
+          needsLawyer: z.boolean(),
+          handoffReason: z.string().optional(),
+        }),
+      });
+      // This shape used to be rejected as invalid and resampled; under rate
+      // limiting that exhausted retries and the client got the fallback.
+      expect(calls).toBe(1);
+      expect(result.output.handoffReason).toBeUndefined();
+    } finally {
+      globalThis.fetch = original;
     }
   });
 });

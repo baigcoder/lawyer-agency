@@ -3,7 +3,7 @@ import type { Language } from '../domain/types';
 import type { AiRunContext } from './ai-context.types';
 import { buildAiAssumptionsBlock } from '../../firm-profile/application/ai-settings.dto';
 import { buildDynamicReplyRules } from './dynamic-reply-rules';
-import { isRomanUrduReply } from './reply-script';
+import { isRomanUrduReply, replyLanguageLabel } from './reply-script';
 
 export function buildFirmPromptVariables(ctx: AiRunContext): Record<string, string> {
   const { firm, aiSettings, ownerProfile } = ctx;
@@ -121,7 +121,14 @@ export function mergePromptVariables(
   ctx: AiRunContext,
   extra: Record<string, string>,
 ): Record<string, string> {
-  return { ...buildFirmPromptVariables(ctx), ...extra };
+  const merged = { ...buildFirmPromptVariables(ctx), ...extra };
+  // Every agent passes the raw Language code here, and every template reads it
+  // as "Reply in {{language}}". Rendering it once, centrally, covers all four
+  // agents and any tenant-customised prompt from the database.
+  if (extra.language) {
+    merged.language = replyLanguageLabel(extra.language, extra.clientText ?? '', ctx.replyWillBeSpoken);
+  }
+  return merged;
 }
 
 export function formatIntakeFields(fields: Record<string, unknown>): string {

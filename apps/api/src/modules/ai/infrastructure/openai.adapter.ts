@@ -39,6 +39,9 @@ export class OpenAiAdapter implements AiClient {
     // A WhatsApp turn that retries for a minute is worse than a fallback reply.
     const deadline = started + (options.timeoutMs ?? 20_000) * 2;
     let lastError: Error | null = null;
+    // Why earlier attempts failed. They need opposite remedies — rate limits
+    // mean change plan or provider; invalid output means fix prompt or schema.
+    const retries = { rateLimited: 0, invalidOutput: 0, network: 0 };
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       if (attempt > 0 && Date.now() >= deadline) break;
@@ -69,6 +72,7 @@ export class OpenAiAdapter implements AiClient {
         // Timeouts, DNS blips and dropped sockets throw instead of returning a
         // response; before this they failed the whole turn on the first hiccup.
         lastError = error instanceof Error ? error : new Error(String(error));
+        retries.network += 1;
         this.logger.warn(
           { agent: options.agent, attempt, err: lastError.message },
           'LLM request failed to complete, retrying',
@@ -92,6 +96,7 @@ export class OpenAiAdapter implements AiClient {
           // Malformed JSON from the model is transient — a resample usually
           // fixes it, and it is cheaper than dropping the client's turn.
           lastError = error instanceof Error ? error : new Error(String(error));
+          retries.invalidOutput += 1;
           if (attempt === maxAttempts - 1 || Date.now() >= deadline) throw lastError;
           this.logger.warn(
             { agent: options.agent, attempt },
@@ -106,12 +111,11 @@ export class OpenAiAdapter implements AiClient {
         const costMicros = costInMicros(tokensIn, tokensOut, options.pricing);
 
         if (attempt > 0) {
-          // The gap between what the client waited and what the model took is
-          // entirely throttling — the number that tells you to change plan or
-          // provider rather than change model.
+          // queuedMs is the time the client waited beyond the model's own
+          // latency. `retries` says what it was spent on.
           this.logger.warn(
-            { agent: options.agent, model, attempts: attempt + 1, latencyMs, queuedMs },
-            'LLM call succeeded after retries — waiting on the provider, not the model',
+            { agent: options.agent, model, attempts: attempt + 1, latencyMs, queuedMs, ...retries },
+            'LLM call succeeded after retries',
           );
         }
 
@@ -129,6 +133,8 @@ export class OpenAiAdapter implements AiClient {
 
       const text = await response.text().catch(() => 'unknown');
       if (isRetryableStatus(response.status) && attempt < maxAttempts - 1) {
+        if (response.status === 429) retries.rateLimited += 1;
+        else retries.network += 1;
         const waitMs =
           response.status === 429 ? this.parseRetryAfter(response, text) : backoffMs(attempt);
         this.logger.warn(
@@ -173,7 +179,7 @@ export class OpenAiAdapter implements AiClient {
     } catch {
       throw new AiProviderError(this.provider, 'response is not valid JSON');
     }
-    const result = schema.safeParse(raw);
+    const result = schema.safeParse(dropNulls(raw));
     if (!result.success) {
       this.logger.warn({ issues: result.error.issues }, 'structured output validation failed');
       throw new AiProviderError(this.provider, 'response failed schema validation');
@@ -188,6 +194,30 @@ function estimateTokens(messages: LlmMessage[]): number {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Removes object keys whose value is `null`, recursively.
+ *
+ * In JSON mode a model says "no value" with `null` — `"handoffReason": null` —
+ * while every agent schema marks such fields `.optional()`, which accepts a
+ * missing key and rejects `null`. A correct answer was therefore thrown away as
+ * invalid and cost a full retry; under rate limiting that sometimes exhausted
+ * the retries and the client got the canned fallback reply.
+ *
+ * Normalising at the adapter fixes all agents at once. No LLM output schema
+ * here gives `null` a meaning of its own. Array elements are kept in place so
+ * list lengths never change; objects inside arrays (citations) are cleaned.
+ */
+export function dropNulls(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(dropNulls);
+  if (value === null || typeof value !== 'object') return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, inner] of Object.entries(value)) {
+    if (inner === null) continue;
+    out[key] = dropNulls(inner);
+  }
+  return out;
 }
 
 /**

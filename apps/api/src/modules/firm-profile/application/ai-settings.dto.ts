@@ -234,9 +234,12 @@ const SPOKEN_REPLY_INSTRUCTION = [
  * "میں کر سکتا ہوں", which no Urdu speaker would ever say about herself.
  */
 export function urduGenderInstruction(voiceGender: AiSettings['aiVoiceGender']): string {
+  // Roman Urdu forms are listed as well as Urdu script. With Urdu-script
+  // examples only, measured Roman Urdu replies still opened "Samajh gaya" — the
+  // model did not carry the rule across scripts.
   return voiceGender === 'male'
-    ? 'When writing Urdu, speak about yourself in the masculine form (کر سکتا ہوں، کروں گا، سمجھ گیا). Keep it consistent.'
-    : 'When writing Urdu, speak about yourself in the feminine form (کر سکتی ہوں، کروں گی، سمجھ گئی). Keep it consistent.';
+    ? 'When writing Urdu or Roman Urdu, speak about yourself in the masculine form: کر سکتا ہوں، کروں گا، سمجھ گیا — in Roman Urdu "kar sakta hoon", "karunga", "samajh gaya". Keep it consistent.'
+    : 'When writing Urdu or Roman Urdu, speak about yourself in the feminine form: کر سکتی ہوں، کروں گی، سمجھ گئی — in Roman Urdu "kar sakti hoon", "karungi", "samajh gayi". Keep it consistent.';
 }
 
 function parseHourMinute(value: unknown, fallback: string): string {
