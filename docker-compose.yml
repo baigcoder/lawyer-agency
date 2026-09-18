@@ -77,6 +77,12 @@ services:
     environment:
       NODE_ENV: development
       API_ROLE: api
+      # Embeddings run locally (multilingual-e5-small, 384 dims): Groq has no
+      # embeddings endpoint, and T3 client documents must not leave for a
+      # third-party provider by default (D-005).
+      OPENAI_EMBEDDING_BASE_URL: http://embeddings:80/v1
+      OPENAI_EMBEDDING_MODEL: intfloat/multilingual-e5-small
+      EMBEDDING_DIMENSIONS: 384
       API_PORT: 3001
       DATABASE_URL: postgresql://app_user:change-me@postgres:5432/lawyer_agency
       REDIS_URL: redis://redis:6379
@@ -119,6 +125,12 @@ services:
     environment:
       NODE_ENV: development
       API_ROLE: worker
+      # Embeddings run locally (multilingual-e5-small, 384 dims): Groq has no
+      # embeddings endpoint, and T3 client documents must not leave for a
+      # third-party provider by default (D-005).
+      OPENAI_EMBEDDING_BASE_URL: http://embeddings:80/v1
+      OPENAI_EMBEDDING_MODEL: intfloat/multilingual-e5-small
+      EMBEDDING_DIMENSIONS: 384
       DATABASE_URL: postgresql://app_user:change-me@postgres:5432/lawyer_agency
       REDIS_URL: redis://redis:6379
       EVOLUTION_API_BASE_URL: http://evolution-api:8080
@@ -157,6 +169,12 @@ services:
     environment:
       NODE_ENV: development
       API_ROLE: voice
+      # Embeddings run locally (multilingual-e5-small, 384 dims): Groq has no
+      # embeddings endpoint, and T3 client documents must not leave for a
+      # third-party provider by default (D-005).
+      OPENAI_EMBEDDING_BASE_URL: http://embeddings:80/v1
+      OPENAI_EMBEDDING_MODEL: intfloat/multilingual-e5-small
+      EMBEDDING_DIMENSIONS: 384
       DATABASE_URL: postgresql://app_user:change-me@postgres:5432/lawyer_agency
       REDIS_URL: redis://redis:6379
       EVOLUTION_API_BASE_URL: http://evolution-api:8080
@@ -178,6 +196,24 @@ services:
         condition: service_healthy
       evolution-api:
         condition: service_healthy
+    restart: unless-stopped
+
+  # Local embedding model behind an OpenAI-compatible /v1/embeddings route, so
+  # the app's embedding client talks to it unchanged. First start downloads the
+  # model (~470 MB) into the embedding-models volume; later starts are instant.
+  embeddings:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+    command: --model-id intfloat/multilingual-e5-small
+    ports:
+      - "8081:80"
+    volumes:
+      - embedding-models:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:80/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
     restart: unless-stopped
 
   evolution-postgres:
@@ -259,6 +295,7 @@ services:
       retries: 10
 
 volumes:
+  embedding-models:
   pgdata:
   redisdata:
   evolution_pgdata:

@@ -36,7 +36,10 @@ export interface AiCallResult<T> {
   output: T;
   provider: string;
   model: string;
+  /** The successful request alone — excludes retry backoff, so it measures the model. */
   latencyMs: number;
+  /** Time lost to rate-limit backoff before that request. Throttling, not model speed. */
+  queuedMs?: number;
   tokensIn: number;
   tokensOut: number;
   costMicros: number;

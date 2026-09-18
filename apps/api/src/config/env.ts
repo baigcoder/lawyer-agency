@@ -74,10 +74,18 @@ const envSchema = z
     AI_DEFAULT_PROVIDER: z.enum(['openai', 'anthropic', 'google']).default('openai'),
     AI_DEFAULT_MODEL: z.string().min(1).default('openai/gpt-oss-20b'),
 
-    // Embeddings (Phase 8) — OpenAI text-embedding-3-large, 1536 dims
-    OPENAI_EMBEDDING_MODEL: z.string().min(1).default('text-embedding-3-large'),
-    OPENAI_EMBEDDING_BASE_URL: z.url().default('https://api.openai.com/v1'),
-    EMBEDDING_DIMENSIONS: z.coerce.number().int().min(1).default(1536),
+    // Embeddings — local multilingual-e5-small behind an OpenAI-compatible
+    // endpoint (the `embeddings` compose service). Groq has no embeddings API,
+    // and T3 documents must not leave for a third party by default (D-005).
+    // Dimensions must match the pgvector columns (migration 0029). OpenAI still
+    // works: text-embedding-3-* with EMBEDDING_DIMENSIONS=384.
+    OPENAI_EMBEDDING_MODEL: z.string().min(1).default('intfloat/multilingual-e5-small'),
+    OPENAI_EMBEDDING_BASE_URL: z.url().default('http://localhost:8081/v1'),
+    // Separate from OPENAI_API_KEY on purpose: that key is often a Groq key
+    // pointed at Groq via OPENAI_BASE_URL for chat, and Groq has no embeddings
+    // endpoint. Falls back to OPENAI_API_KEY when unset.
+    OPENAI_EMBEDDING_API_KEY: z.string().min(1).optional(),
+    EMBEDDING_DIMENSIONS: z.coerce.number().int().min(1).default(384),
 
     // Object storage — auto uses Supabase when configured, filesystem fallback on failure
     OBJECT_STORAGE_DRIVER: z.enum(['auto', 'filesystem', 'supabase']).default('auto'),

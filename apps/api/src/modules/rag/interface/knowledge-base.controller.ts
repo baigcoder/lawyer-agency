@@ -33,6 +33,33 @@ type UpdateKbEntryDto = z.infer<typeof updateKbSchema>;
 export class KnowledgeBaseController {
   constructor(private readonly kb: KnowledgeBaseService) {}
 
+  /**
+   * How much of the knowledge base semantic search can actually see. A firm
+   * whose entries were indexed while embeddings were misconfigured gets FAQ
+   * answers from keyword matching only, with nothing else to reveal it.
+   */
+  @Get('embedding-coverage')
+  async embeddingCoverage(@TenantId() tenantId: string) {
+    const coverage = await this.kb.embeddingCoverage(tenantId);
+    return {
+      ...coverage,
+      healthy: coverage.missing === 0,
+      ...(coverage.missing > 0
+        ? {
+            warning:
+              'Some chunks have no embedding, so semantic search cannot see them and FAQ answers fall back to keyword matching. Check the embedding provider, then POST knowledge-base/reindex.',
+          }
+        : {}),
+    };
+  }
+
+  /** Re-embeds entries that were indexed while embeddings were unavailable. */
+  @Post('reindex')
+  @RequirePermission('knowledge-base:write')
+  reindex(@TenantId() tenantId: string) {
+    return this.kb.reindexMissingEmbeddings(tenantId);
+  }
+
   @Post()
   @RequirePermission('knowledge-base:write')
   @UsePipes(new ZodValidationPipe(createKbSchema))

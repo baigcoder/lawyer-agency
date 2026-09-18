@@ -43,6 +43,11 @@ export class OpenAiAdapter implements AiClient {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       if (attempt > 0 && Date.now() >= deadline) break;
 
+      // Timed per attempt, not from the top of the loop. Measuring from
+      // `started` folds rate-limit backoff into the model's latency, so a
+      // throttled fast model and a genuinely slow one look identical — and
+      // they need opposite fixes.
+      const attemptStarted = Date.now();
       let response: Response;
       try {
         response = await fetch(`${baseUrl}/chat/completions`, {
@@ -74,7 +79,8 @@ export class OpenAiAdapter implements AiClient {
       }
 
       if (response.ok) {
-        const latencyMs = Date.now() - started;
+        const latencyMs = Date.now() - attemptStarted;
+        const queuedMs = attemptStarted - started;
         const body = (await response.json()) as OpenAiResponse;
         const content =
           body.choices?.[0]?.message?.content ?? body.choices?.[0]?.message?.reasoning ?? '';
@@ -99,11 +105,22 @@ export class OpenAiAdapter implements AiClient {
         const tokensOut = body.usage?.completion_tokens ?? estimateTokens([{ role: 'assistant', content }]);
         const costMicros = costInMicros(tokensIn, tokensOut, options.pricing);
 
+        if (attempt > 0) {
+          // The gap between what the client waited and what the model took is
+          // entirely throttling — the number that tells you to change plan or
+          // provider rather than change model.
+          this.logger.warn(
+            { agent: options.agent, model, attempts: attempt + 1, latencyMs, queuedMs },
+            'LLM call succeeded after retries — waiting on the provider, not the model',
+          );
+        }
+
         return {
           output: parsed as T,
           provider: this.provider,
           model,
           latencyMs,
+          queuedMs,
           tokensIn,
           tokensOut,
           costMicros,

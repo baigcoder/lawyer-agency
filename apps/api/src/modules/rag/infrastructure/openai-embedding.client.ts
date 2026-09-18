@@ -22,26 +22,41 @@ export class OpenAiEmbeddingClient implements EmbeddingClient {
 
   constructor(private readonly config: ConfigService<Env, true>) {}
 
+  /** A search query — the text a client typed. */
   async embed(text: string): Promise<EmbeddingResult> {
-    const results = await this.embedBatch([text]);
+    const results = await this.request([text], 'query');
     const result = results[0];
     if (!result) throw new EmbeddingProviderError('empty embedding response');
     return result;
   }
 
+  /** Documents being indexed — knowledge-base articles and client files. */
   async embedBatch(texts: string[]): Promise<EmbeddingResult[]> {
-    const apiKey = this.config.get('OPENAI_API_KEY', { infer: true });
-    if (!apiKey) throw new EmbeddingProviderError('OPENAI_API_KEY not configured');
+    return this.request(texts, 'passage');
+  }
 
+  private async request(texts: string[], kind: EmbeddingKind): Promise<EmbeddingResult[]> {
     const baseUrl = this.config.get('OPENAI_EMBEDDING_BASE_URL', { infer: true }).replace(/\/$/, '');
+    const apiKey = resolveEmbeddingKey({
+      baseUrl,
+      embeddingKey: this.config.get('OPENAI_EMBEDDING_API_KEY', { infer: true }),
+      chatKey: this.config.get('OPENAI_API_KEY', { infer: true }),
+    });
+
+    if (!apiKey && isHostedOpenAi(baseUrl)) {
+      throw new EmbeddingProviderError('no embedding key: set OPENAI_EMBEDDING_API_KEY (or OPENAI_API_KEY)');
+    }
+    const mismatch = apiKey ? describeKeyMismatch(apiKey, baseUrl) : null;
+    if (mismatch) throw new EmbeddingProviderError(mismatch);
+
     const model = this.config.get('OPENAI_EMBEDDING_MODEL', { infer: true });
     const dimensions = this.config.get('EMBEDDING_DIMENSIONS', { infer: true });
-    const inputs = texts.map((t) => t.replace(/\n/g, ' '));
+    const inputs = texts.map((t) => withInstructionPrefix(model, kind, t.replace(/\n/g, ' ')));
 
     const response = await fetch(`${baseUrl}/embeddings`, {
       method: 'POST',
       headers: {
-        authorization: `Bearer ${apiKey}`,
+        ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
         'content-type': 'application/json',
       },
       // `dimensions` is not optional here: the pgvector columns are
@@ -75,6 +90,57 @@ export class OpenAiEmbeddingClient implements EmbeddingClient {
     }
     return vectors;
   }
+}
+
+export type EmbeddingKind = 'query' | 'passage';
+
+export function isHostedOpenAi(baseUrl: string): boolean {
+  return /(^|\/\/)api\.openai\.com/.test(baseUrl);
+}
+
+/**
+ * Which key, if any, to send to the embedding endpoint.
+ *
+ * An explicit OPENAI_EMBEDDING_API_KEY is always used — it was set for this.
+ * The chat key (OPENAI_API_KEY) is only borrowed for OpenAI's own endpoint.
+ * Forwarding it to a local or third-party embedding server would hand a secret
+ * — often a Groq key — to a service it was never issued for.
+ */
+export function resolveEmbeddingKey(input: {
+  baseUrl: string;
+  embeddingKey: string | undefined;
+  chatKey: string | undefined;
+}): string | undefined {
+  if (input.embeddingKey) return input.embeddingKey;
+  return isHostedOpenAi(input.baseUrl) ? input.chatKey : undefined;
+}
+
+/**
+ * The e5 family is trained with instruction prefixes and scores noticeably
+ * worse without them: a query must read "query: …" and an indexed document
+ * "passage: …". Other models take text as-is.
+ */
+export function withInstructionPrefix(model: string, kind: EmbeddingKind, text: string): string {
+  if (!/(^|\/)(multilingual-)?e5[-_]/i.test(model)) return text;
+  return `${kind}: ${text}`;
+}
+
+/**
+ * A Groq key sent to OpenAI's embeddings endpoint can only ever 401. That is
+ * the natural result of pointing OPENAI_API_KEY at Groq for chat, and it used to
+ * fail on every knowledge-base write with a generic auth error — so name the
+ * cause instead of making someone decode it.
+ */
+export function describeKeyMismatch(apiKey: string, baseUrl: string): string | null {
+  const isGroqKey = apiKey.startsWith('gsk_');
+  const isOpenAiEndpoint = /(^|\/\/)api\.openai\.com/.test(baseUrl);
+  if (isGroqKey && isOpenAiEndpoint) {
+    return (
+      'the embedding key is a Groq key (gsk_…) but OPENAI_EMBEDDING_BASE_URL is OpenAI, and Groq has no ' +
+      'embeddings endpoint. Set OPENAI_EMBEDDING_API_KEY to an OpenAI key (sk-…).'
+    );
+  }
+  return null;
 }
 
 /**

@@ -178,6 +178,10 @@ UR: خلع یا نان نفقہ کی مدت اور رقم کیس اور شہر �
       'fard', 'registry', 'mutation', 'intiqal', 'allotment', 'noc', 'site plan', 'tokens',
       'bayana', 'agreement to sell', 'power of attorney sale', 'fraud plot', 'double sale',
       'فرد', 'رجسٹری', 'انتقال', 'بیعانہ', 'الاٹمنٹ', 'غلط پلاٹ',
+      // How a client actually asks — "zameen ke kaghzat", not "fard and intiqal".
+      // Without these the article was unreachable from everyday Roman Urdu.
+      'zameen', 'kaghzat', 'kagzat', 'kaghaz', 'plot', 'land papers', 'property papers',
+      'زمین', 'کاغذات', 'پلاٹ',
       'property papers', 'plot papers',
     ],
     content: `EN: For land or house disputes, firms often ask for: CNIC, sale agreement / bayana, registry, fard, mutation/intiqal, tax receipts, allotment/NOC if society property, and photos of possession. Double sale and fake registry stories are common — do not decide title on WhatsApp. List what they have, city, and survey/plot number if known.

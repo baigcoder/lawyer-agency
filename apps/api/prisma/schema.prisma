@@ -979,9 +979,9 @@ model DocumentChunk {
   chunkIndex Int
   content    String
   tokenCount Int
-  // vector(1536) — text-embedding-3-large requested at 1536 dims.
+  // vector(384) — local multilingual-e5-small (migration 0029).
   // Unsupported by Prisma: written/read via $queryRaw only (Phase 8).
-  embedding  Unsupported("vector(1536)")?
+  embedding  Unsupported("vector(384)")?
   metadata   Json    @default("{}")
   createdAt  DateTime @default(now()) @db.Timestamptz(6)
 
@@ -1286,9 +1286,9 @@ model KbChunk {
   chunkIndex Int
   content    String
   tokenCount Int
-  // vector(1536) — text-embedding-3-large requested at 1536 dims.
+  // vector(384) — local multilingual-e5-small (migration 0029).
   // Unsupported by Prisma: written/read via $queryRaw only (Phase 8).
-  embedding  Unsupported("vector(1536)")?
+  embedding  Unsupported("vector(384)")?
   metadata   Json     @default("{}")
   createdAt  DateTime @default(now()) @db.Timestamptz(6)
 
