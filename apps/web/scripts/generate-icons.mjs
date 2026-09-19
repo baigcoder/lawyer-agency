@@ -21,7 +21,7 @@ import { execFileSync } from 'node:child_process';
 import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PUBLIC = resolve(HERE, '../public');
@@ -85,7 +85,9 @@ function rasterize(svgName, size) {
         '--default-background-color=00000000',
         `--window-size=${size},${size}`,
         `--screenshot=${out}`,
-        `file://${page}`,
+        // Not `file://${page}`: a Windows path makes that `file://C:...`,
+        // which is not a valid file URL.
+        pathToFileURL(page).href,
       ],
       { stdio: 'ignore' },
     );

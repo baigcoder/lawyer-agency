@@ -8,9 +8,13 @@
     filters or hairline chains (the previous mark had 6-unit chains and a
     Gaussian glow, both of which turned to mush below 32px).
 
-    Colours are the real brand tokens: emerald-500 -> emerald-700, matching
-    `--primary` in globals.css. The filled tile means the mark keeps its
-    contrast on a light or a dark browser tab without needing a variant.
+    Colours are the real brand tokens: emerald-500 to emerald-700, matching
+    the primary colour variable in globals.css. The filled tile means the mark
+    keeps its contrast on a light or a dark browser tab without needing a
+    variant.
+
+    No double hyphen anywhere in this comment: XML forbids it, and one
+    ("dash dash primary") made browsers reject the whole file as an image.
   -->
   <defs>
     <linearGradient id="tile" x1="0" y1="0" x2="0.35" y2="1">
