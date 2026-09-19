@@ -1,0 +1,15 @@
+-- ---------------------------------------------------------------------------
+-- Record time lost to retries separately from the model's own latency.
+--
+-- `latencyMs` measures the request that answered. On Groq's free tier that was
+-- ~1.5s while clients waited 8–15s more on rate-limit backoff, and nothing in
+-- the table showed it: throttling (change plan or provider) and a slow model
+-- (change model) looked the same.
+--
+-- For an ERROR row — a call that threw, now logged — `latencyMs` is NULL and
+-- `queuedMs` is the whole wait before the client got the fallback reply.
+--
+-- Nullable, so rows written before this stay valid. ai_logs is partitioned by
+-- month; ADD COLUMN on the parent reaches every partition.
+-- ---------------------------------------------------------------------------
+ALTER TABLE "app"."ai_logs" ADD COLUMN "queuedMs" INTEGER;

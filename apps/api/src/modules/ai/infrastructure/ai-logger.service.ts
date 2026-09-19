@@ -70,6 +70,44 @@ export class AiLoggerService {
     });
   }
 
+  /**
+   * Records an LLM call that threw. Callers log their own successes, so a throw
+   * skipped the only log line — the failures, which are the calls that send the
+   * client a canned fallback, were the rows missing from this table.
+   *
+   * No model answer arrived, so `latencyMs` is null; `queuedMs` holds the whole
+   * time the client waited for nothing.
+   */
+  async logFailure(input: {
+    tenantId: string;
+    agent: string;
+    provider: string;
+    model: string;
+    promptVersionId?: string | null | undefined;
+    correlationId?: string | null | undefined;
+    elapsedMs: number;
+    error: string;
+  }): Promise<void> {
+    await this.uow.withTenant(input.tenantId, async (tx) => {
+      await tx.aiLog.create({
+        data: {
+          tenantId: input.tenantId,
+          agent: input.agent,
+          provider: input.provider,
+          model: input.model,
+          promptVersionId: input.promptVersionId ?? null,
+          correlationId: input.correlationId ?? null,
+          latencyMs: null,
+          queuedMs: Math.max(0, Math.round(input.elapsedMs)),
+          dataTier: 'T2',
+          status: 'ERROR',
+          // Provider error bodies can be long; the cause fits well within this.
+          error: input.error.slice(0, 1000),
+        },
+      });
+    });
+  }
+
   async log(input: LogInput): Promise<void> {
     await this.uow.withTenant(input.tenantId, async (tx) => {
       await tx.aiLog.create({
@@ -81,6 +119,7 @@ export class AiLoggerService {
           promptVersionId: input.promptVersionId ?? null,
           correlationId: input.correlationId ?? null,
           latencyMs: input.result.latencyMs,
+          queuedMs: input.result.queuedMs ?? null,
           tokensIn: input.result.tokensIn,
           tokensOut: input.result.tokensOut,
           costMicros: input.result.costMicros,

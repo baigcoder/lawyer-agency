@@ -17,12 +17,14 @@ import { EscalationDetectorService } from './escalation-detector.service';
 import { AiContextBuilder } from './ai-context.builder';
 import { EscalationAssignmentService } from './escalation-assignment.service';
 import {
+  renderAgentFailureReply,
   renderFirstTurnDisclosure,
   renderHandoffMessage,
   renderOffTopicRedirect,
   formatRetrievedContext,
 } from './ai-prompt-variables';
 import { applyReplyLanguagePolicy } from './reply-language';
+import { wantsRomanUrdu } from './reply-script';
 import { applyFirmScopeIntent, isCasualOffTopic } from './firm-scope';
 import { isShortGreeting } from './dynamic-reply-rules';
 import { rewriteMissingAnswerReply } from './missing-answer-reply';
@@ -306,6 +308,9 @@ export class AiOrchestratorService {
         ? languageForUnusableVoiceNote(context.firm.clientLanguages)
         : languageFromTranscript(clientText, context.firm.clientLanguages, sttLanguage);
       const language = applyReplyLanguagePolicy(detected, context.aiSettings);
+      // Decided once, by the same rule as the prompt's language label, so the
+      // fixed replies (handoff, off-topic, failure) match the agent's script.
+      context.replyInRomanUrdu = wantsRomanUrdu(language, clientText, context.replyWillBeSpoken);
       let intent: AgentIntent = escalation
         ? 'HUMAN_HANDOFF'
         : applyFirmScopeIntent(route.intent, clientText, context.aiSettings);
@@ -336,13 +341,14 @@ export class AiOrchestratorService {
           }).catch((error: unknown): AgentResult => {
             this.logger.warn(
               { err: error instanceof Error ? error.message : 'agent' },
-              'agent LLM failed — using spoken fallback',
+              'agent LLM failed — using fallback reply',
             );
             return {
-              responseText:
-                language === 'UR'
-                  ? 'میں نے آپ کی بات سن لی۔ براہ کرم بتائیں آپ کو کس قانونی معاملے میں مدد چاہیے؟'
-                  : 'I heard you. What legal matter can we help with?',
+              responseText: renderAgentFailureReply(
+                context,
+                language,
+                message.contentType === 'AUDIO' ? 'voice' : 'text',
+              ),
               languageDetected: language,
               citations: [],
             };

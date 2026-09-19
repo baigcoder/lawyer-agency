@@ -68,6 +68,8 @@ Return JSON: { "situation": "..." }.`,
         temperature: 0.2,
         maxTokens: 280,
         timeoutMs: 8_000,
+        // A short summary; reasoning at the default effort can use the whole budget.
+        reasoningEffort: 'low',
         correlationId: params.correlationId,
       });
 

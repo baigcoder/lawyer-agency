@@ -80,6 +80,8 @@ export class GreetingAgent {
         temperature: 0.55,
         maxTokens: 220,
         timeoutMs: 12_000,
+        // One short line; reasoning at the default effort can use the whole budget.
+        reasoningEffort: 'low',
       });
 
       await this.logger.log({

@@ -137,21 +137,39 @@ export function formatIntakeFields(fields: Record<string, unknown>): string {
   return entries.map(([k, v]) => `- ${k}: ${String(v)}`).join('\n');
 }
 
+/**
+ * The fixed replies below used to be Urdu script for every UR client, so a
+ * client who wrote Roman Urdu — and had been getting Roman Urdu from the agent —
+ * suddenly got a line in a script they had not used. The urgent handoff was one
+ * of them, the message where being understood matters most.
+ */
+function isRomanUrdu(ctx: AiRunContext, language: Language): boolean {
+  return language === 'UR' && Boolean(ctx.replyInRomanUrdu);
+}
+
 export function renderHandoffMessage(ctx: AiRunContext, language: Language): string {
   const vars = buildFirmPromptVariables(ctx);
-  const owner = spokenOwnerName(vars) ?? (language === 'UR' ? 'مالک' : 'my owner');
+  const roman = isRomanUrdu(ctx, language);
+  const owner = spokenOwnerName(vars) ?? (language === 'UR' ? (roman ? 'malik' : 'مالک') : 'my owner');
   const minutes = ctx.aiSettings.aiHandoffSlaMinutes;
   const responseTime =
     minutes > 0
       ? language === 'UR'
-        ? `دفتری اوقات میں ${minutes} منٹ کے اندر`
+        ? roman
+          ? `office hours mein ${minutes} minute ke andar`
+          : `دفتری اوقات میں ${minutes} منٹ کے اندر`
         : `within ${minutes} minute${minutes === 1 ? '' : 's'} during office hours`
       : '';
-  const template = ctx.aiSettings.aiHandoffMessage.trim() || defaultHandoffTemplate(language, minutes > 0);
+  const template = ctx.aiSettings.aiHandoffMessage.trim() || defaultHandoffTemplate(language, minutes > 0, roman);
   return renderTemplate(template, { ...vars, ownerName: owner, responseTime }).trim();
 }
 
-function defaultHandoffTemplate(language: Language, hasSla: boolean): string {
+function defaultHandoffTemplate(language: Language, hasSla: boolean, roman: boolean): string {
+  if (language === 'UR' && roman) {
+    return hasSla
+      ? 'Theek hai, yeh fori maamla hai. Main ne yeh {{ownerName}} ko bhej diya hai, woh {{responseTime}} aap ko jawab denge. Phone paas rakhein.'
+      : 'Theek hai, yeh fori maamla hai. Main ne yeh {{ownerName}} ko bhej diya hai, woh aap ko jawab denge. Phone paas rakhein.';
+  }
   if (language === 'UR') {
     return hasSla
       ? 'ٹھیک ہے، یہ فوری معاملہ ہے۔ میں نے یہ {{ownerName}} کو بھیج دیا ہے، وہ {{responseTime}} آپ کو جواب دیں گے۔ فون پاس رکھیں۔'
@@ -164,6 +182,9 @@ function defaultHandoffTemplate(language: Language, hasSla: boolean): string {
 
 export function renderGreetingMessage(ctx: AiRunContext, language: Language): string {
   const vars = buildFirmPromptVariables(ctx);
+  if (isRomanUrdu(ctx, language)) {
+    return renderTemplate('Wa alaikum assalam, bataiye aap ko kya chahiye?', vars);
+  }
   if (language === 'UR') {
     return renderTemplate('وعلیکم السلام، بتائیں آپ کو کیا چاہیے؟', vars);
   }
@@ -272,9 +293,18 @@ export function defaultDisclosure(
 
 export function renderOffTopicRedirect(ctx: AiRunContext, language: Language): string {
   const vars = buildFirmPromptVariables(ctx);
+  // The verb agrees with the speaker. This was always "سکتا" (masculine),
+  // while the default voice — and the rest of the thread — is female.
+  const male = ctx.aiSettings.aiVoiceGender === 'male';
+  if (isRomanUrdu(ctx, language)) {
+    return renderTemplate(
+      `Main sirf is firm ke qanooni intake, appointment, documents ya case ke sawalon ka jawab de ${male ? 'sakta' : 'sakti'} hoon, aam gup shup ya zaati baat nahi. Bataiye aap ko kis qanooni maamle mein madad chahiye.`,
+      vars,
+    );
+  }
   if (language === 'UR') {
     return renderTemplate(
-      'میں صرف اس فرم کے قانونی انٹیک، اپائنٹمنٹ، دستاویزات یا کیس کے سوالات کا جواب دے سکتا ہوں، عام گپ شپ یا ذاتی بات نہیں۔ براہ کرم بتائیں آپ کو کس قانونی معاملے میں مدد چاہیے۔',
+      `میں صرف اس فرم کے قانونی انٹیک، اپائنٹمنٹ، دستاویزات یا کیس کے سوالات کا جواب دے ${male ? 'سکتا' : 'سکتی'} ہوں، عام گپ شپ یا ذاتی بات نہیں۔ براہ کرم بتائیں آپ کو کس قانونی معاملے میں مدد چاہیے۔`,
       vars,
     );
   }
@@ -282,6 +312,34 @@ export function renderOffTopicRedirect(ctx: AiRunContext, language: Language): s
     "I can only help with this firm's legal intake, appointments, documents, or case questions, not casual chat. How can we help with a legal matter?",
     vars,
   );
+}
+
+/**
+ * Sent when the agent's model call fails outright — retries exhausted on rate
+ * limits, or the provider is down.
+ *
+ * It used to ask "what legal matter can we help with?", usually of a client who
+ * had just described it, and only in Urdu script for any UR client. Asking for
+ * a little more keeps the thread moving whatever they said; the next turn is
+ * likely to reach the model. "کر سکوں" / "kar sakoon" is the same for a male or
+ * female speaker.
+ */
+export function renderAgentFailureReply(
+  ctx: AiRunContext,
+  language: Language,
+  channel: 'text' | 'voice',
+): string {
+  if (isRomanUrdu(ctx, language)) {
+    return 'Aap ka message mil gaya. Thora sa aur bata dein, taake main sahi madad kar sakoon.';
+  }
+  if (language === 'UR') {
+    return channel === 'voice'
+      ? 'میں نے آپ کی بات سن لی۔ تھوڑا سا اور بتا دیں تاکہ میں صحیح مدد کر سکوں۔'
+      : 'آپ کا پیغام مل گیا۔ تھوڑا سا اور بتا دیں تاکہ میں صحیح مدد کر سکوں۔';
+  }
+  return channel === 'voice'
+    ? 'I heard your voice note. Could you tell me a bit more, so I can help properly?'
+    : 'Got your message. Could you tell me a bit more, so I can help properly?';
 }
 
 const EN_ASSISTANT_PREFIX =

@@ -162,6 +162,8 @@ export class VoiceReceptionistService {
       outputSchema: turnSchema,
       // A caller waits in silence for this; a 20s default is a dead line.
       timeoutMs: 9_000,
+      // A tool choice, not prose, and the caller hears silence while it thinks.
+      reasoningEffort: 'low',
       messages: [
         {
           role: 'system',
@@ -337,6 +339,8 @@ export class VoiceReceptionistService {
         outputSchema: faqSpeechSchema,
         timeoutMs: 9_000,
         maxTokens: 220,
+        // Spoken aloud while the caller waits.
+        reasoningEffort: 'low',
         messages: [
           {
             role: 'system',

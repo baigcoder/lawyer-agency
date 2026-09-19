@@ -16,10 +16,34 @@ interface OpenAiResponse {
 
 export class AiProviderError extends DomainError {
   readonly httpStatus = 502;
+  /** The message without the provider prefix, for building a fuller one. */
+  readonly reason: string;
   constructor(provider: string, message: string) {
     super(`AI provider ${provider} error: ${message}`);
     this.name = 'AiProviderError';
+    this.reason = message;
   }
+}
+
+type RetryCauses = { rateLimited: number; invalidOutput: number; network: number };
+
+function reasonOf(error: Error): string {
+  return error instanceof AiProviderError ? error.reason : error.message;
+}
+
+/**
+ * "after 3 failed attempts (rate limited 2, invalid output 1)". A failed call
+ * becomes the fallback reply, and these causes need opposite fixes — rate
+ * limits mean change plan or provider, invalid output means fix the prompt.
+ */
+export function describeRetries(retries: RetryCauses): string {
+  const attempts = retries.rateLimited + retries.invalidOutput + retries.network;
+  const causes = [
+    retries.rateLimited ? `rate limited ${retries.rateLimited}` : '',
+    retries.invalidOutput ? `invalid output ${retries.invalidOutput}` : '',
+    retries.network ? `network ${retries.network}` : '',
+  ].filter(Boolean);
+  return `after ${attempts} failed attempt${attempts === 1 ? '' : 's'} (${causes.join(', ')})`;
 }
 
 @Injectable()
@@ -41,7 +65,7 @@ export class OpenAiAdapter implements AiClient {
     let lastError: Error | null = null;
     // Why earlier attempts failed. They need opposite remedies — rate limits
     // mean change plan or provider; invalid output means fix prompt or schema.
-    const retries = { rateLimited: 0, invalidOutput: 0, network: 0 };
+    const retries: RetryCauses = { rateLimited: 0, invalidOutput: 0, network: 0 };
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       if (attempt > 0 && Date.now() >= deadline) break;
@@ -64,6 +88,9 @@ export class OpenAiAdapter implements AiClient {
             messages: options.messages,
             temperature: options.temperature ?? 0.2,
             max_tokens: options.maxTokens ?? 1024,
+            ...(options.reasoningEffort && supportsReasoningEffort(model)
+              ? { reasoning_effort: options.reasoningEffort }
+              : {}),
             response_format: { type: 'json_object' },
           }),
           signal: AbortSignal.timeout(options.timeoutMs ?? 20_000),
@@ -97,7 +124,9 @@ export class OpenAiAdapter implements AiClient {
           // fixes it, and it is cheaper than dropping the client's turn.
           lastError = error instanceof Error ? error : new Error(String(error));
           retries.invalidOutput += 1;
-          if (attempt === maxAttempts - 1 || Date.now() >= deadline) throw lastError;
+          if (attempt === maxAttempts - 1 || Date.now() >= deadline) {
+            throw new AiProviderError(this.provider, `${reasonOf(lastError)} ${describeRetries(retries)}`);
+          }
           this.logger.warn(
             { agent: options.agent, attempt },
             'LLM returned unusable JSON, resampling',
@@ -132,17 +161,34 @@ export class OpenAiAdapter implements AiClient {
       }
 
       const text = await response.text().catch(() => 'unknown');
-      if (isRetryableStatus(response.status) && attempt < maxAttempts - 1) {
+      if (isJsonValidationFailure(response.status, text)) {
+        // Groq checks JSON mode itself and answers 400 when the sample is not
+        // valid JSON. That is the model's output, not a bad request — resample,
+        // exactly as when our own parse fails.
+        retries.invalidOutput += 1;
+        lastError = new AiProviderError(this.provider, `HTTP 400 json_validate_failed: ${failedGeneration(text)}`);
+        if (attempt === maxAttempts - 1 || Date.now() >= deadline) break;
+        this.logger.warn({ agent: options.agent, attempt }, 'LLM returned unusable JSON, resampling');
+        await sleep(backoffMs(attempt));
+        continue;
+      }
+      if (isRetryableStatus(response.status)) {
         if (response.status === 429) retries.rateLimited += 1;
         else retries.network += 1;
-        const waitMs =
-          response.status === 429 ? this.parseRetryAfter(response, text) : backoffMs(attempt);
-        this.logger.warn(
-          { status: response.status, agent: options.agent, attempt, waitMs },
-          'LLM call retryable, retrying',
-        );
-        await sleep(waitMs);
-        continue;
+        // Groq's 429 body says which limit was hit — per minute or per day —
+        // and a daily limit means every call fails until it resets.
+        lastError = new AiProviderError(this.provider, `HTTP ${response.status}: ${text.slice(0, 300)}`);
+        if (attempt < maxAttempts - 1) {
+          const waitMs =
+            response.status === 429 ? this.parseRetryAfter(response, text) : backoffMs(attempt);
+          this.logger.warn(
+            { status: response.status, agent: options.agent, attempt, waitMs },
+            'LLM call retryable, retrying',
+          );
+          await sleep(waitMs);
+          continue;
+        }
+        break;
       }
 
       this.logger.warn({ status: response.status, agent: options.agent }, 'openai call failed');
@@ -151,7 +197,7 @@ export class OpenAiAdapter implements AiClient {
 
     throw new AiProviderError(
       this.provider,
-      lastError ? `retries exhausted: ${lastError.message}` : 'internal retry exhausted',
+      `${lastError ? reasonOf(lastError) : 'no usable response'} ${describeRetries(retries)}`,
     );
   }
 
@@ -218,6 +264,31 @@ export function dropNulls(value: unknown): unknown {
     out[key] = dropNulls(inner);
   }
   return out;
+}
+
+/**
+ * OpenAI's gpt-oss models, as served by Groq, take `reasoning_effort`; models
+ * that do not, such as Llama, reject the request if it is sent.
+ */
+export function supportsReasoningEffort(model: string): boolean {
+  return /(^|\/)gpt-oss/.test(model);
+}
+
+/** Groq's 400 for a JSON-mode sample that was not valid JSON. */
+export function isJsonValidationFailure(status: number, body: string): boolean {
+  return status === 400 && body.includes('json_validate_failed');
+}
+
+/**
+ * Why Groq rejected the sample, reduced to a fixed phrase. `failed_generation`
+ * is usually the model's partial output — which can quote the client — and
+ * ai_logs never stores message content. Running out of tokens is the one cause
+ * worth naming: it means raise the budget, not change the prompt.
+ */
+function failedGeneration(body: string): string {
+  return /max completion tokens reached/i.test(body)
+    ? 'ran out of tokens before the JSON was complete'
+    : 'sample was not valid JSON';
 }
 
 /**

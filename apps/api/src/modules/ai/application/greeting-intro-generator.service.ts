@@ -62,6 +62,8 @@ export class GreetingIntroGeneratorService {
         pricing: choice,
         temperature: 0.4,
         maxTokens: 300,
+        // A short line; reasoning at the default effort can use the whole budget.
+        reasoningEffort: 'low',
       });
 
       await this.aiLogger.log({

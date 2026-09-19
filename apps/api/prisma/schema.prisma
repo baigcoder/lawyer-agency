@@ -1220,7 +1220,8 @@ model AiLog {
   model            String
   promptVersionId  String?      @db.Uuid
   correlationId    String?      @db.Uuid
-  latencyMs        Int?
+  latencyMs        Int? // the answering request alone — the model's speed
+  queuedMs         Int? // waited beyond that on retries; for an ERROR row, the whole wait
   tokensIn         Int          @default(0)
   tokensOut        Int          @default(0)
   costMicros       Int          @default(0) // USD micros

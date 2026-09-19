@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clientWritesLatin, isRomanUrduReply, replyLanguageLabel, replyScript } from './reply-script';
+import { clientWritesLatin, isRomanUrduReply, replyLanguageLabel, replyScript, wantsRomanUrdu } from './reply-script';
 import { defaultDisclosure, defaultSpokenDisclosure, mergePromptVariables } from './ai-prompt-variables';
 import { buildAiAssumptionsBlock, defaultAiSettings, urduGenderInstruction } from '../../firm-profile/application/ai-settings.dto';
 
@@ -165,5 +165,14 @@ describe('urduGenderInstruction in Roman Urdu', () => {
     // With script-only examples, Roman Urdu replies still opened "Samajh gaya".
     expect(urduGenderInstruction('female')).toContain('samajh gayi');
     expect(urduGenderInstruction('male')).toContain('samajh gaya');
+  });
+});
+
+describe('wantsRomanUrdu', () => {
+  it('is the one rule behind the prompt label and the fixed replies', () => {
+    expect(wantsRomanUrdu('UR', 'mera case kab lagega', false)).toBe(true);
+    expect(wantsRomanUrdu('UR', 'mera case kab lagega', true)).toBe(false);
+    expect(wantsRomanUrdu('UR', 'میرا کیس کب لگے گا', false)).toBe(false);
+    expect(wantsRomanUrdu('EN', 'when is my hearing', false)).toBe(false);
   });
 });

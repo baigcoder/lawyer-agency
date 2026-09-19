@@ -82,6 +82,8 @@ export class MasterRouterService {
       correlationId: params.correlationId,
       maxTokens: 256,
       timeoutMs: 12_000,
+      // A label, not prose. See EscalationDetectorService for the measurement.
+      reasoningEffort: 'low',
     });
 
     await this.logger.log({

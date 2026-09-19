@@ -25,7 +25,14 @@ export interface AiCallOptions<T extends z.ZodType> {
    */
   pricing?: TokenPricing | undefined;
   temperature?: number;
+  /** Covers a reasoning model's hidden reasoning as well as the answer. */
   maxTokens?: number;
+  /**
+   * How long a reasoning model thinks first. Its reasoning spends `maxTokens`,
+   * so a budget sized for the answer alone can run out mid-JSON. Sent only to
+   * models that take it; others ignore it.
+   */
+  reasoningEffort?: 'low' | 'medium' | 'high' | undefined;
   /** Per-call fetch abort. Adapter default is 20s. */
   timeoutMs?: number | undefined;
   promptVersionId?: string | null | undefined;

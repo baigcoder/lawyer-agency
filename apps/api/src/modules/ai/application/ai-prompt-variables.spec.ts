@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildFirmPromptVariables,
+  renderAgentFailureReply,
   renderFirstTurnDisclosure,
+  renderGreetingMessage,
   renderHandoffMessage,
+  renderOffTopicRedirect,
 } from './ai-prompt-variables';
 import type { AiRunContext } from './ai-context.types';
 import { defaultAiSettings } from '../../firm-profile/application/ai-settings.dto';
@@ -34,6 +37,7 @@ function sampleContext(overrides: Partial<AiRunContext> = {}): AiRunContext {
     caseId: undefined,
     retrievedChunks: [],
     retrievedContext: '',
+    replyWillBeSpoken: false,
     ...overrides,
   };
 }
@@ -172,5 +176,85 @@ describe('ai-prompt-variables', () => {
     expect(vars.ownerName).toBe('Adv. Ali');
     expect(vars.featuredCases).toContain('Bail granted');
     expect(vars.ownerProfileBlock).toContain('Adv. Ali');
+  });
+});
+
+const URDU_SCRIPT = /[؀-ۿ]/;
+
+describe('fixed replies follow the client script', () => {
+  // These were Urdu script for every UR client, so a Roman Urdu client who had
+  // been getting Roman Urdu from the agent got one line they may not read.
+  const roman = sampleContext({ replyInRomanUrdu: true });
+  const script = sampleContext({ replyInRomanUrdu: false });
+
+  it('sends the urgent handoff in Roman Urdu to a Roman Urdu client', () => {
+    const withSla = sampleContext({
+      replyInRomanUrdu: true,
+      aiSettings: { ...defaultAiSettings(), aiHandoffSlaMinutes: 15 },
+    });
+    const line = renderHandoffMessage(withSla, 'UR');
+    expect(line).not.toMatch(URDU_SCRIPT);
+    expect(line).toContain('fori maamla');
+    expect(line).toContain('15 minute ke andar');
+  });
+
+  it('keeps the handoff in Urdu script for an Urdu-script client', () => {
+    expect(renderHandoffMessage(script, 'UR')).toMatch(URDU_SCRIPT);
+  });
+
+  it('never applies Roman Urdu to an English reply', () => {
+    expect(renderHandoffMessage(roman, 'EN')).toContain('urgent');
+  });
+
+  it('respects a firm-written handoff message as it is', () => {
+    const custom = sampleContext({
+      replyInRomanUrdu: true,
+      aiSettings: { ...defaultAiSettings(), aiHandoffMessage: 'Wakeel sahab jald rabta karenge.' },
+    });
+    expect(renderHandoffMessage(custom, 'UR')).toBe('Wakeel sahab jald rabta karenge.');
+  });
+
+  it('redirects off-topic chat in Roman Urdu too', () => {
+    expect(renderOffTopicRedirect(roman, 'UR')).not.toMatch(URDU_SCRIPT);
+    expect(renderOffTopicRedirect(script, 'UR')).toMatch(URDU_SCRIPT);
+  });
+
+  it('agrees the off-topic verb with the configured voice', () => {
+    // It was always masculine "سکتا" while the default voice is female.
+    expect(renderOffTopicRedirect(script, 'UR')).toContain('سکتی');
+    const male = sampleContext({ aiSettings: { ...defaultAiSettings(), aiVoiceGender: 'male' } });
+    expect(renderOffTopicRedirect(male, 'UR')).toContain('سکتا');
+    expect(renderOffTopicRedirect(roman, 'UR')).toContain('sakti hoon');
+  });
+
+  it('greets in Roman Urdu too', () => {
+    expect(renderGreetingMessage(roman, 'UR')).not.toMatch(URDU_SCRIPT);
+  });
+});
+
+describe('renderAgentFailureReply', () => {
+  it('answers a Roman Urdu client in Roman Urdu', () => {
+    const line = renderAgentFailureReply(sampleContext({ replyInRomanUrdu: true }), 'UR', 'text');
+    expect(line).not.toMatch(URDU_SCRIPT);
+  });
+
+  it('answers an Urdu-script client in Urdu script', () => {
+    expect(renderAgentFailureReply(sampleContext(), 'UR', 'text')).toMatch(URDU_SCRIPT);
+  });
+
+  it('does not say it heard a text message', () => {
+    expect(renderAgentFailureReply(sampleContext(), 'EN', 'text')).not.toContain('heard');
+    expect(renderAgentFailureReply(sampleContext(), 'EN', 'voice')).toContain('voice note');
+    expect(renderAgentFailureReply(sampleContext(), 'UR', 'text')).not.toContain('سن لی');
+  });
+
+  it('does not ask which legal matter — the client has usually just said', () => {
+    for (const line of [
+      renderAgentFailureReply(sampleContext(), 'EN', 'text'),
+      renderAgentFailureReply(sampleContext({ replyInRomanUrdu: true }), 'UR', 'text'),
+      renderAgentFailureReply(sampleContext(), 'UR', 'voice'),
+    ]) {
+      expect(line).not.toMatch(/legal matter|qanooni maamle|قانونی معاملے/);
+    }
   });
 });

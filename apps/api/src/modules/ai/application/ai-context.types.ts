@@ -52,4 +52,11 @@ export interface AiRunContext {
    * be written in Urdu script.
    */
   replyWillBeSpoken: boolean;
+  /**
+   * True when a UR reply should be Roman Urdu: the client typed Latin letters
+   * and the reply will be read, not spoken. Fixed strings (handoff, off-topic,
+   * failure fallback) read it so they match the agent's reply. Absent means
+   * Urdu script.
+   */
+  replyInRomanUrdu?: boolean;
 }

@@ -73,7 +73,8 @@ export class CaseUpdateAgent {
       promptVersionId: prompt.id,
       correlationId: params.correlationId,
       temperature: 0.45,
-      maxTokens: 500,
+      // Includes the reasoning, not just the answer. See IntakeAgent.
+      maxTokens: 1500,
       timeoutMs: 20_000,
     });
 

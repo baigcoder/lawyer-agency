@@ -87,6 +87,11 @@ export class EscalationDetectorService {
         correlationId: params.correlationId,
         maxTokens: 256,
         timeoutMs: 12_000,
+        // gpt-oss reasons before it answers, and those tokens count against
+        // maxTokens. At the default effort an arrest message needed ~640 and every
+        // call ran out mid-JSON, so triage always fell back to keywords. Low effort
+        // gave the same verdicts in ~70 tokens, about 3x faster.
+        reasoningEffort: 'low',
       });
 
       await this.logger.log({
@@ -107,26 +112,9 @@ export class EscalationDetectorService {
         reason: result.output.reason ?? 'escalation model triggered',
         excerpt: result.output.excerpt ?? params.clientText.slice(0, 200),
       };
-    } catch (error) {
-      await this.logger.log({
-        tenantId: params.tenantId,
-        agent: this.agent,
-        result: {
-          output: {},
-          provider: choice.provider,
-          model: choice.model,
-          latencyMs: 0,
-          tokensIn: 0,
-          tokensOut: 0,
-          costMicros: 0,
-        },
-        promptVersionId: prompt.id,
-        correlationId: params.correlationId,
-        dataTier: 'T2',
-        status: 'ERROR',
-        error: (error as Error).message,
-      });
-      // Fail safe: with no verdict available, an ambiguous hit escalates.
+    } catch {
+      // The failed call is already in ai_logs — AiClientFactory records every
+      // throw. Fail safe: with no verdict available, an ambiguous hit escalates.
       return keywordScan(params.clientText) ?? ambiguous;
     }
   }

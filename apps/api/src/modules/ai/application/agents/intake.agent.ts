@@ -83,7 +83,9 @@ export class IntakeAgent {
       promptVersionId: prompt.id,
       correlationId: params.correlationId,
       temperature: 0.65,
-      maxTokens: 700,
+      // The reasoning counts too, not just the reply: at 700 a measured khula
+      // answer needed 748 and was cut off mid-JSON, which becomes a fallback.
+      maxTokens: 1500,
       timeoutMs: 20_000,
     });
 
