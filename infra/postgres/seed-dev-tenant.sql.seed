@@ -11,3 +11,38 @@ VALUES (
   NOW()
 )
 ON CONFLICT (id) DO NOTHING;
+
+-- Dev owner (D-037). The dashboard's "me" endpoints — profile, closed cases,
+-- case highlights — need a real user. With only the tenant seeded they all
+-- answered 401 "User context required"; the web now sends this id as
+-- x-user-id (NEXT_PUBLIC_DEV_USER_ID).
+--
+-- Admin is the role onboarding gives a firm owner. Its permissions are not
+-- seeded: the dev seam grants '*' itself, and a real sign-in adds any missing
+-- permissions to an existing system role (AuthService).
+INSERT INTO app.roles (id, "tenantId", name, "isSystem", "createdAt")
+VALUES (
+  '018f3d6e-7c8b-7a2c-9d4e-5f6a7b8c9d10',
+  '018f3d6e-7c8b-7a2c-9d4e-5f6a7b8c9d0e',
+  'Admin',
+  true,
+  NOW()
+)
+ON CONFLICT ("tenantId", name) DO NOTHING;
+
+-- Joined to whichever Admin role exists, so an Admin created by a real
+-- sign-in (with another id) does not break the replay.
+INSERT INTO app.users (id, "tenantId", "clerkUserId", "roleId", name, email, status, "createdAt", "updatedAt")
+SELECT
+  '018f3d6e-7c8b-7a2c-9d4e-5f6a7b8c9d11',
+  r."tenantId",
+  'dev_owner_018f3d6e',
+  r.id,
+  'Development owner',
+  'owner@development-firm.local',
+  'ACTIVE',
+  NOW(),
+  NOW()
+FROM app.roles r
+WHERE r."tenantId" = '018f3d6e-7c8b-7a2c-9d4e-5f6a7b8c9d0e' AND r.name = 'Admin'
+ON CONFLICT DO NOTHING;

@@ -24,6 +24,9 @@ services:
         # the browser bundle with empty values.
         NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-/backend}
         NEXT_PUBLIC_DEV_TENANT_ID: ${NEXT_PUBLIC_DEV_TENANT_ID:-018f3d6e-7c8b-7a2c-9d4e-5f6a7b8c9d0e}
+        # The seeded dev owner. Without it every "me" endpoint answered 401
+        # "User context required" and the user menu and profile card failed.
+        NEXT_PUBLIC_DEV_USER_ID: ${NEXT_PUBLIC_DEV_USER_ID:-018f3d6e-7c8b-7a2c-9d4e-5f6a7b8c9d11}
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
     restart: unless-stopped
     environment:

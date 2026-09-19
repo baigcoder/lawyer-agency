@@ -212,9 +212,10 @@ services:
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
         NEXT_PUBLIC_LEGAL_BUSINESS_NAME: ${NEXT_PUBLIC_LEGAL_BUSINESS_NAME:-Wakeel Technologies (Pvt) Ltd}
         NEXT_PUBLIC_LEGAL_CONTACT_EMAIL: ${NEXT_PUBLIC_LEGAL_CONTACT_EMAIL:-privacy@wakeel.pk}
-        # NEXT_PUBLIC_DEV_TENANT_ID is deliberately absent: baking it would ship
-        # the dev seam to production, where every browser would send a
-        # hard-coded x-tenant-id header. Production authenticates with Clerk.
+        # NEXT_PUBLIC_DEV_TENANT_ID and NEXT_PUBLIC_DEV_USER_ID are deliberately
+        # absent: baking them would ship the dev seam to production, where every
+        # browser would send hard-coded x-tenant-id / x-user-id headers.
+        # Production authenticates with Clerk.
     restart: unless-stopped
     environment:
       NODE_ENV: production

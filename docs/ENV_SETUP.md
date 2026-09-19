@@ -512,6 +512,8 @@ NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
 
 # Dev seam tenant (only used when Clerk keys are absent)
 NEXT_PUBLIC_DEV_TENANT_ID=018f3d6e-7c8b-7a2c-9d4e-5f6a7b8c9d0e
+# Dev seam user: the seeded owner. "Me" endpoints (profile, user menu) need it.
+NEXT_PUBLIC_DEV_USER_ID=018f3d6e-7c8b-7a2c-9d4e-5f6a7b8c9d11
 ```
 
 ---
