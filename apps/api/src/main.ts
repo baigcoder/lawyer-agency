@@ -17,6 +17,11 @@ async function bootstrap(): Promise<void> {
   // rawBody: HMAC webhook verification needs the exact bytes Meta signed.
   const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
   app.useLogger(app.get(Logger));
+  // NestFactory.create only flushes buffered logs inside listen(). The worker
+  // and voice roles never listen, so the buffer stayed attached for the life of
+  // the process: every Nest Logger call from every service was appended to an
+  // in-memory array, never printed and never freed.
+  app.flushLogs();
   app.enableShutdownHooks();
 
   // Graceful shutdown can hang if a dependency is already dead (observed:
