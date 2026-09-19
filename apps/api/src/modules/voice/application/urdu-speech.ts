@@ -127,6 +127,74 @@ const TERMS: Record<string, string> = {
   rs: 'روپے',
   nadra: 'نادرا',
   ok: 'ٹھیک ہے',
+  // Legal and admin words the model leaves in Latin inside Urdu. Courts are
+  // named the way Pakistanis say them, so "family court" beats plain "court".
+  'family court': 'فیملی کورٹ',
+  'civil court': 'سول کورٹ',
+  'session court': 'سیشن کورٹ',
+  'sessions court': 'سیشن کورٹ',
+  'high court': 'ہائی کورٹ',
+  'supreme court': 'سپریم کورٹ',
+  'police station': 'تھانہ',
+  'legal notice': 'لیگل نوٹس',
+  'stamp paper': 'اسٹامپ پیپر',
+  'return memo': 'ریٹرن میمو',
+  'voice note': 'وائس نوٹ',
+  'b-form': 'ب فارم',
+  police: 'پولیس',
+  judge: 'جج',
+  hearing: 'سماعت',
+  petition: 'درخواست',
+  application: 'درخواست',
+  affidavit: 'حلف نامہ',
+  notice: 'نوٹس',
+  cheque: 'چیک',
+  bank: 'بینک',
+  copy: 'کاپی',
+  photocopy: 'فوٹو کاپی',
+  certificate: 'سرٹیفکیٹ',
+  registry: 'رجسٹری',
+  property: 'جائیداد',
+  rent: 'کرایہ',
+  tenant: 'کرایہ دار',
+  landlord: 'مالک مکان',
+  agreement: 'معاہدہ',
+  divorce: 'طلاق',
+  khula: 'خلع',
+  nikah: 'نکاح',
+  nikahnama: 'نکاح نامہ',
+  custody: 'کسٹڈی',
+  maintenance: 'نان نفقہ',
+  inheritance: 'وراثت',
+  section: 'دفعہ',
+  ppc: 'پی پی سی',
+  crpc: 'سی آر پی سی',
+  sho: 'ایس ایچ او',
+  legal: 'قانونی',
+  draft: 'ڈرافٹ',
+  payment: 'ادائیگی',
+  jazzcash: 'جاز کیش',
+  easypaisa: 'ایزی پیسہ',
+  mobile: 'موبائل',
+  phone: 'فون',
+  number: 'نمبر',
+  message: 'میسج',
+  meeting: 'میٹنگ',
+  // Weekdays turn up in every appointment reply.
+  monday: 'پیر',
+  tuesday: 'منگل',
+  wednesday: 'بدھ',
+  thursday: 'جمعرات',
+  friday: 'جمعہ',
+  saturday: 'ہفتہ',
+  sunday: 'اتوار',
+};
+
+/** How the English letters are said in Urdu, for acronyms and section letters. */
+const LETTER_NAMES: Record<string, string> = {
+  A: 'اے', B: 'بی', C: 'سی', D: 'ڈی', E: 'ای', F: 'ایف', G: 'جی', H: 'ایچ', I: 'آئی',
+  J: 'جے', K: 'کے', L: 'ایل', M: 'ایم', N: 'این', O: 'او', P: 'پی', Q: 'کیو', R: 'آر',
+  S: 'ایس', T: 'ٹی', U: 'یو', V: 'وی', W: 'ڈبلیو', X: 'ایکس', Y: 'وائی', Z: 'زیڈ',
 };
 
 const ARABIC_SCRIPT = /[؀-ۿ]/;
@@ -158,6 +226,10 @@ export function normalizeUrduForSpeech(text: string): string {
     return urduClockTime(hour, minute);
   });
 
+  // "489-F" is "four eighty-nine F": split the section letter off before the
+  // digits become words, so it is not glued to them by a hyphen.
+  out = out.replace(/(\d)-([A-Za-z])\b/g, '$1 $2');
+
   // Long digit runs stay digit-by-digit: phone, CNIC, case numbers.
   out = out.replace(/\b\d{7,}\b/g, (digits) => urduDigitSequence(digits));
 
@@ -174,6 +246,16 @@ export function normalizeUrduForSpeech(text: string): string {
     const pattern = new RegExp(`(?<![\\p{L}\\p{M}])${escapeRegExp(term)}(?![\\p{L}\\p{M}])`, 'giu');
     out = out.replace(pattern, TERMS[term] ?? term);
   }
+
+  // Capitals left after the known terms — FBR, NTN, a section letter — are
+  // said letter by letter, as a person would. Left in Latin, the voice read
+  // them with English phonetics in the middle of an Urdu sentence.
+  out = out.replace(/(?<![\p{L}\p{M}])[A-Z]{1,5}(?![\p{L}\p{M}])/gu, (letters) =>
+    letters
+      .split('')
+      .map((letter) => LETTER_NAMES[letter] ?? letter)
+      .join(' '),
+  );
 
   // Urdu sentences end with a danda and pause on an Urdu comma. Latin marks
   // inside Urdu text phrase badly.

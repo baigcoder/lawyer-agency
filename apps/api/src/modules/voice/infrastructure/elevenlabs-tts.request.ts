@@ -1,6 +1,8 @@
 /**
  * ElevenLabs TTS: Turbo for WhatsApp notes (human pace), Flash for live calls.
- * `eleven_v3` is too slow for a WhatsApp turn; multilingual_v2 does not speak Urdu.
+ * Urdu notes also lead with Turbo by default (ELEVENLABS_URDU_NOTE_MODEL) — it
+ * pronounced Urdu as well as `eleven_v3` or better, far faster. multilingual_v2
+ * misread Urdu consonants (شناختی as "shanakti") and stays English-only.
  */
 
 import {
@@ -76,10 +78,10 @@ export function ttsBodyForModel(
 /**
  * Ordered models to try for one synthesis.
  *
- * Urdu notes lead with `eleven_v3`: it is the only model with real Urdu
- * language support, and it is already what an Urdu note ends up using today
- * (turbo 400s first), so leading with it keeps the audio the firm ships while
- * removing the wasted request. Turbo follows as the fast recovery.
+ * Urdu notes lead with the configured model — Turbo by default, which read
+ * Urdu as accurately as `eleven_v3` or better in measurement — and keep the
+ * other as the recovery. Turbo gets no `language_code` (it rejects 'ur') and
+ * infers Urdu from the script.
  *
  * A live call leads with Flash and keeps v3 last: a caller cannot sit through
  * the slowest model, but reaching it beats dropping to robotic espeak.

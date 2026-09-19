@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  aiSettingsSchema,
   buildAiAssumptionsBlock,
   defaultAiSettings,
   generateGreetingIntro,
   parseAiSettings,
+  persistAiSettings,
 } from './ai-settings.dto';
 
 describe('AI settings helpers', () => {
@@ -53,5 +55,23 @@ describe('AI settings helpers', () => {
     expect(parsed.aiFirmScopeOnly).toBe(true);
     expect(parsed.callsTakenBy).toBe('ai');
     expect(parsed.aiCallHoursTimezone).toBe('Asia/Karachi');
+  });
+});
+
+describe('persistAiSettings', () => {
+  it('stores every settings field, so none is silently dropped on save', () => {
+    // It lists fields by hand. aiVoiceIdUrdu was left off: PUT answered 200
+    // and the firm's Urdu voice was gone on the next load.
+    const stored = persistAiSettings(defaultAiSettings());
+    for (const key of Object.keys(aiSettingsSchema.shape)) {
+      expect(stored, key).toHaveProperty(key);
+    }
+  });
+
+  it('round-trips a separately chosen Urdu voice', () => {
+    const settings = { ...defaultAiSettings(), aiVoiceId: 'EnglishPick000000001', aiVoiceIdUrdu: 'UrduPick000000000001' };
+    const reloaded = parseAiSettings(persistAiSettings(settings));
+    expect(reloaded.aiVoiceIdUrdu).toBe('UrduPick000000000001');
+    expect(reloaded.aiVoiceId).toBe('EnglishPick000000001');
   });
 });

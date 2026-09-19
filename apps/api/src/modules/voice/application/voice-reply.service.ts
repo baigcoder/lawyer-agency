@@ -46,6 +46,7 @@ export class VoiceReplyService {
           text: params.responseText,
           voiceGender: settings.aiVoiceGender,
           voiceId: settings.aiVoiceId || undefined,
+          urduVoiceId: settings.aiVoiceIdUrdu || undefined,
           language: spokenLanguage(params.language, params.responseText),
         });
         // Metered against the same monthly budget as model calls: a per-character

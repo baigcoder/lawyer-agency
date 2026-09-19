@@ -26,7 +26,10 @@ export const aiSettingsSchema = z.object({
   aiVoiceEnabled: z.boolean(),
   aiVoiceGender: aiVoiceGenderSchema,
   aiVoiceReplyMode: aiVoiceReplyModeSchema,
+  /** English voice; empty = default. */
   aiVoiceId: z.string().max(80),
+  /** Urdu voice, chosen separately; empty = default. */
+  aiVoiceIdUrdu: z.string().max(80),
   callsTakenBy: callsTakenBySchema,
   aiCallHoursStart: z.string().max(5),
   aiCallHoursEnd: z.string().max(5),
@@ -46,16 +49,26 @@ export const ttsVoiceSchema = z.object({
   name: z.string(),
   gender: z.enum(['male', 'female', 'neutral']),
   accent: z.string(),
+  language: z.string().optional(),
+  recommendedFor: z.array(z.enum(['en', 'ur'])).optional(),
 });
+
+const namedVoiceSchema = z.object({ id: z.string(), name: z.string() });
+const genderDefaultsSchema = z.object({ female: namedVoiceSchema, male: namedVoiceSchema });
 
 export const voiceListSchema = z.object({
   configured: z.boolean(),
   voices: z.array(ttsVoiceSchema),
+  libraryWarning: z.string().optional(),
+  /** What replies use when no voice is picked, per language and gender. */
+  defaults: z.object({ en: genderDefaultsSchema, ur: genderDefaultsSchema }).optional(),
 });
 
 export const voicePreviewSchema = z.object({
   mimeType: z.string(),
   audioBase64: z.string().min(1),
+  /** The voice that actually spoke the preview. */
+  voiceId: z.string().optional(),
 });
 
 export const kbEntrySchema = z.object({

@@ -105,3 +105,41 @@ describe('prepareSpokenTtsText — Urdu end to end', () => {
     expect(spoken).toContain('پچیس ہزار');
   });
 });
+
+describe('Latin words left in an Urdu reply', () => {
+  // Left in Latin, the voice read them with English phonetics mid-sentence.
+  const latin = /[A-Za-z]/;
+
+  it('names courts the way Pakistanis say them', () => {
+    const spoken = normalizeUrduForSpeech('آپ family court میں دعویٰ دائر کریں، high court بعد میں۔');
+    expect(spoken).toContain('فیملی کورٹ');
+    expect(spoken).toContain('ہائی کورٹ');
+    expect(spoken).not.toMatch(latin);
+  });
+
+  it('writes common legal words in Urdu script', () => {
+    const spoken = normalizeUrduForSpeech('bank سے return memo لیں اور legal notice بھیجیں۔');
+    expect(spoken).toContain('بینک');
+    expect(spoken).toContain('ریٹرن میمو');
+    expect(spoken).toContain('لیگل نوٹس');
+    expect(spoken).not.toMatch(latin);
+  });
+
+  it('reads a section with a letter as number then letter', () => {
+    const spoken = normalizeUrduForSpeech('دفعہ 489-F کے تحت شکایت ہوگی۔');
+    expect(spoken).toContain('چار سو نواسی ایف');
+    expect(spoken).not.toContain('-');
+  });
+
+  it('spells an unknown acronym letter by letter', () => {
+    expect(normalizeUrduForSpeech('FBR سے NTN بنوائیں۔')).toContain('ایف بی آر');
+  });
+
+  it('says weekdays in Urdu', () => {
+    expect(normalizeUrduForSpeech('Monday کو دفتر آئیں۔')).toContain('پیر');
+  });
+
+  it('leaves an English reply alone', () => {
+    expect(normalizeUrduForSpeech('Visit the family court on Monday.')).toBe('Visit the family court on Monday.');
+  });
+});

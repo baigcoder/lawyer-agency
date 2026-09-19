@@ -203,7 +203,7 @@ export function renderFirstTurnDisclosure(
   const template =
     custom ||
     (channel === 'voice'
-      ? defaultSpokenDisclosure(language, vars)
+      ? defaultSpokenDisclosure(language, vars, ctx.aiSettings.aiVoiceGender)
       : defaultDisclosure(language, vars, {
           // Match the script the agent just replied in, so the client does not
           // receive Urdu script and Roman Urdu in the same message.
@@ -225,19 +225,31 @@ export function spokenOwnerName(vars: Record<string, string>): string | null {
   return owner;
 }
 
-export function defaultSpokenDisclosure(language: Language, vars: Record<string, string>): string {
+export function defaultSpokenDisclosure(
+  language: Language,
+  vars: Record<string, string>,
+  voiceGender: 'male' | 'female' = 'female',
+): string {
   const owner = spokenOwnerName(vars);
   const firm = vars.displayName?.trim() || 'the firm';
   if (language === 'UR') {
     // Always Urdu script: this line is read aloud, and an Urdu voice
     // mispronounces Latin letters. No Roman Urdu variant on the spoken path.
+    // "کی اسسٹنٹ" for a female voice: the possessive agrees with the speaker.
+    // A female voice saying "کا اسسٹنٹ ہوں" is heard as a man's line.
+    const of = urduOf(voiceGender);
     return owner
-      ? `میں ${owner} کا اسسٹنٹ ہوں، وکیل خود نہیں۔`
-      : `میں ${firm} کا اسسٹنٹ ہوں، وکیل نہیں۔`;
+      ? `میں ${owner} ${of} اسسٹنٹ ہوں، وکیل خود نہیں۔`
+      : `میں ${firm} ${of} اسسٹنٹ ہوں، وکیل نہیں۔`;
   }
   return owner
     ? `I'm ${owner}'s assistant, not ${owner} the lawyer.`
     : `I'm the assistant for ${firm}, not a lawyer.`;
+}
+
+/** Urdu "of" agreeing with the speaker: a female assistant is "X کی اسسٹنٹ". */
+export function urduOf(voiceGender: 'male' | 'female'): 'کا' | 'کی' {
+  return voiceGender === 'male' ? 'کا' : 'کی';
 }
 
 export interface DisclosureOptions {
@@ -263,24 +275,26 @@ export function defaultDisclosure(
     // in Roman Urdu — two scripts in one message.
     // Roman Urdu inflects for the speaker's gender just as Urdu script does.
     const willAnswer = options.voiceGender === 'male' ? 'dunga' : 'dungi';
+    const of = options.voiceGender === 'male' ? 'ka' : 'ki';
     const handles = options.voiceEnabled
       ? `Aap ke messages aur voice notes ka jawab main ${willAnswer}.`
       : `Aap ke messages ka jawab main ${willAnswer}.`;
     return owner
-      ? `Main ${owner} ka assistant hoon, khud wakeel nahi. ${handles} Bataiye aap ko kya chahiye?`
-      : `Main ${firm} ka assistant hoon, wakeel nahi. ${handles} Bataiye aap ko kya chahiye?`;
+      ? `Main ${owner} ${of} assistant hoon, khud wakeel nahi. ${handles} Bataiye aap ko kya chahiye?`
+      : `Main ${firm} ${of} assistant hoon, wakeel nahi. ${handles} Bataiye aap ko kya chahiye?`;
   }
 
   if (language === 'UR') {
     // Urdu verbs agree with the speaker, and the configured voice is female by
     // default — "دوں گا" from a female assistant reads as a different person.
     const willAnswer = options.voiceGender === 'male' ? 'دوں گا' : 'دوں گی';
+    const of = urduOf(options.voiceGender ?? 'female');
     const handles = options.voiceEnabled
       ? `آپ کے میسج اور وائس نوٹ کا جواب میں ${willAnswer}۔`
       : `آپ کے میسج کا جواب میں ${willAnswer}۔`;
     return owner
-      ? `میں ${owner} کا اسسٹنٹ ہوں، وکیل خود نہیں۔ ${handles} بتائیں آپ کو کیا چاہیے؟`
-      : `میں ${firm} کا اسسٹنٹ ہوں، وکیل نہیں۔ ${handles} بتائیں آپ کو کیا چاہیے؟`;
+      ? `میں ${owner} ${of} اسسٹنٹ ہوں، وکیل خود نہیں۔ ${handles} بتائیں آپ کو کیا چاہیے؟`
+      : `میں ${firm} ${of} اسسٹنٹ ہوں، وکیل نہیں۔ ${handles} بتائیں آپ کو کیا چاہیے؟`;
   }
 
   const handles = options.voiceEnabled
@@ -351,7 +365,7 @@ const EN_HELP_FOLLOWUP =
 const UR_ASSISTANT_PREFIX =
   /^میں[^\n۔.]{0,80}(?:اے\s*آئی\s*)?اسسٹنٹ\s*ہوں(?:[،,]?\s*وکیل[^\n۔.]{0,60})?[۔.]?\s*/;
 const UR_ASSISTANT_FOLLOWUP =
-  /^(?:آپ کے میسج اور وائس نوٹ کا جواب میں دوں گا[۔.]?\s*)?(?:بتائیں آپ کو کیا چاہیے[؟?]?\s*)?/u;
+  /^(?:آپ کے میسج اور وائس نوٹ کا جواب میں دوں گ[ای][۔.]?\s*)?(?:بتائیں آپ کو کیا چاہیے[؟?]?\s*)?/u;
 
 /** Drop a leading "I am the AI assistant…" so first-turn disclosure is prepended once. */
 export function stripLeadingAiSelfIntros(text: string, disclosure = ''): string {

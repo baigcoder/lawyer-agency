@@ -103,13 +103,15 @@ const envSchema = z
     // different script). Set these to voice ids from your ElevenLabs library.
     ELEVENLABS_VOICE_ID_URDU_MALE: z.string().min(1).optional(),
     ELEVENLABS_VOICE_ID_URDU_FEMALE: z.string().min(1).optional(),
-    // Which model speaks Urdu voice notes. eleven_v3 is the only model with
-    // explicit Urdu language support, but measured ~6.2s per note against
-    // ~0.7s for turbo, which infers Urdu from the Arabic script. Flip to
-    // eleven_turbo_v2_5 if the faster voice sounds good enough.
+    // Which model speaks Urdu voice notes. Turbo, measured: six voices read two
+    // legal Urdu sentences, transcribed back with Whisper. Turbo was as accurate
+    // as eleven_v3 or better for five of the six (Anika: 2 word errors against
+    // 5), at ~0.7s a note against ~6.2s. v3 stays as the fallback. The voices
+    // that speak Urdu best are Hindi-labelled library voices, which ElevenLabs
+    // verifies on turbo, not on v3.
     ELEVENLABS_URDU_NOTE_MODEL: z
       .enum(['eleven_v3', 'eleven_turbo_v2_5'])
-      .default('eleven_v3'),
+      .default('eleven_turbo_v2_5'),
     // Whisper STT — optional overrides when chat uses Groq but STT should hit OpenAI (or vice versa)
     OPENAI_WHISPER_API_KEY: z.string().min(1).optional(),
     OPENAI_WHISPER_BASE_URL: z.url().optional(),

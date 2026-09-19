@@ -76,6 +76,7 @@ export class CallSpeechService {
           text: spoken,
           voiceGender: settings.aiVoiceGender,
           voiceId: settings.aiVoiceId || undefined,
+          urduVoiceId: settings.aiVoiceIdUrdu || undefined,
           language,
           outputFormat: 'pcm_24000',
         });
@@ -111,6 +112,7 @@ export class CallSpeechService {
         text: spoken,
         voiceGender: settings.aiVoiceGender,
         voiceId: settings.aiVoiceId || undefined,
+        urduVoiceId: settings.aiVoiceIdUrdu || undefined,
         language: callLanguage ?? speechLanguage(spoken, settings.aiLanguagePolicy),
       });
       return { audioBuffer: result.audioBuffer, mimeType: result.mimeType };

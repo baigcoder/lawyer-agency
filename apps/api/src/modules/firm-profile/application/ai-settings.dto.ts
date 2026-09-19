@@ -26,7 +26,14 @@ export const aiSettingsSchema = z.object({
   aiVoiceEnabled: z.boolean(),
   aiVoiceGender: aiVoiceGenderSchema,
   aiVoiceReplyMode: aiVoiceReplyModeSchema,
+  /** Voice for English replies; empty = the platform default for the gender. */
   aiVoiceId: z.string().max(80),
+  /**
+   * Voice for Urdu replies, chosen separately: one voice cannot serve both.
+   * An English voice reads Urdu script with English phonetics, and the voices
+   * that pronounce Urdu best are not the best English ones.
+   */
+  aiVoiceIdUrdu: z.string().max(80),
   callsTakenBy: callsTakenBySchema,
   aiCallHoursStart: z.string().max(5),
   aiCallHoursEnd: z.string().max(5),
@@ -66,6 +73,7 @@ export function defaultAiSettings(): AiSettings {
     aiVoiceGender: 'female',
     aiVoiceReplyMode: 'auto',
     aiVoiceId: '',
+    aiVoiceIdUrdu: '',
     callsTakenBy: 'ai',
     aiCallHoursStart: '',
     aiCallHoursEnd: '',
@@ -133,6 +141,7 @@ export function parseAiSettings(raw: Record<string, unknown>): AiSettings {
       ? (voiceReplyMode as AiSettings['aiVoiceReplyMode'])
       : defaults.aiVoiceReplyMode,
     aiVoiceId: typeof raw['aiVoiceId'] === 'string' ? raw['aiVoiceId'].trim().slice(0, 80) : '',
+    aiVoiceIdUrdu: typeof raw['aiVoiceIdUrdu'] === 'string' ? raw['aiVoiceIdUrdu'].trim().slice(0, 80) : '',
     callsTakenBy: callsTakenBySchema.safeParse(callsTakenBy).success
       ? (callsTakenBy as AiSettings['callsTakenBy'])
       : defaults.callsTakenBy,
@@ -166,6 +175,7 @@ export function persistAiSettings(parsed: AiSettings): Record<string, unknown> {
     aiVoiceGender: parsed.aiVoiceGender,
     aiVoiceReplyMode: parsed.aiVoiceReplyMode,
     aiVoiceId: parsed.aiVoiceId,
+    aiVoiceIdUrdu: parsed.aiVoiceIdUrdu,
     callsTakenBy: parsed.callsTakenBy,
     aiCallHoursStart: parsed.aiCallHoursStart,
     aiCallHoursEnd: parsed.aiCallHoursEnd,
@@ -238,8 +248,8 @@ export function urduGenderInstruction(voiceGender: AiSettings['aiVoiceGender']):
   // examples only, measured Roman Urdu replies still opened "Samajh gaya" — the
   // model did not carry the rule across scripts.
   return voiceGender === 'male'
-    ? 'When writing Urdu or Roman Urdu, speak about yourself in the masculine form: کر سکتا ہوں، کروں گا، سمجھ گیا — in Roman Urdu "kar sakta hoon", "karunga", "samajh gaya". Keep it consistent.'
-    : 'When writing Urdu or Roman Urdu, speak about yourself in the feminine form: کر سکتی ہوں، کروں گی، سمجھ گئی — in Roman Urdu "kar sakti hoon", "karungi", "samajh gayi". Keep it consistent.';
+    ? 'When writing Urdu or Roman Urdu, speak about yourself in the masculine form: کر سکتا ہوں، کروں گا، سمجھ گیا، فرم کا اسسٹنٹ ہوں — in Roman Urdu "kar sakta hoon", "karunga", "samajh gaya", "firm ka assistant hoon". Keep it consistent.'
+    : 'When writing Urdu or Roman Urdu, speak about yourself in the feminine form: کر سکتی ہوں، کروں گی، سمجھ گئی، فرم کی اسسٹنٹ ہوں — in Roman Urdu "kar sakti hoon", "karungi", "samajh gayi", "firm ki assistant hoon". Keep it consistent.';
 }
 
 function parseHourMinute(value: unknown, fallback: string): string {

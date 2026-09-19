@@ -14,7 +14,16 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { apiRequest, ApiError } from '@/lib/api-client';
 import { useLanguage } from '@/lib/language';
 import {
@@ -23,14 +32,12 @@ import {
   voiceListSchema,
   voicePreviewSchema,
   type AiSettings,
+  type TtsVoice,
 } from '@/lib/schemas/ai-settings';
 import { firmProfileSchema } from '@/lib/schemas/firm-profile';
 import { cn } from '@/lib/utils';
 
-const DEFAULT_PREVIEW_VOICE = {
-  female: { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura' },
-  male: { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George' },
-} as const;
+type VoiceLanguage = 'en' | 'ur';
 
 export function AiSettingsCard() {
   const { t } = useLanguage();
@@ -80,20 +87,23 @@ export function AiSettingsCard() {
     onError: (error) => toast.error(error instanceof ApiError ? error.message : t('aiCouldNotFetchIntro')),
   });
 
+  const [playing, setPlaying] = useState<{ voiceId: string | undefined; language: VoiceLanguage } | null>(null);
   const previewVoice = useMutation({
     mutationFn: (input: {
+      /** Empty previews the default — the voice a reply would use. */
       voiceId: string;
-      language: 'en' | 'ur';
+      language: VoiceLanguage;
       voiceGender: 'male' | 'female';
       tone: AiSettings['aiTone'];
       displayName: string;
     }) => apiRequest('/v1/voice/preview', { method: 'POST', body: input, schema: voicePreviewSchema }),
-    onSuccess: (data) => {
+    onSuccess: (data, input) => {
       const url = audioSrcFromPreview(data.mimeType, data.audioBase64);
       setPreviewUrl((previous) => {
         if (previous) URL.revokeObjectURL(previous);
         return url;
       });
+      setPlaying({ voiceId: data.voiceId, language: input.language });
     },
     onError: (error) => toast.error(error instanceof ApiError ? error.message : t('aiCouldNotPreviewVoice')),
   });
@@ -118,40 +128,48 @@ export function AiSettingsCard() {
   const displayName = profile.data?.displayName ?? profile.data?.firmName ?? 'Your firm';
   const previewIntro = (form.watch('aiGreetingIntro') || '').replace(/\{\{displayName\}\}/g, displayName);
   const introIsUrdu = /[\u0600-\u06FF]/.test(previewIntro);
-  const selectedVoiceId = form.watch('aiVoiceId');
   const voiceGender = form.watch('aiVoiceGender') === 'male' ? 'male' : 'female';
   const allVoices = voices.data?.voices ?? [];
   const voicesForGender = allVoices.filter(
     (voice) => voice.gender === voiceGender || voice.gender === 'neutral',
   );
-  const defaultVoiceMeta = DEFAULT_PREVIEW_VOICE[voiceGender];
-  const defaultVoiceLabel =
-    voicesForGender.find((voice) => voice.gender === voiceGender)?.name ?? defaultVoiceMeta.name;
+  const defaults = voices.data?.defaults;
+  const voiceField = (language: VoiceLanguage) => (language === 'ur' ? 'aiVoiceIdUrdu' : 'aiVoiceId');
 
   const setVoiceGender = (gender: 'male' | 'female') => {
     form.setValue('aiVoiceGender', gender, { shouldDirty: true });
-    const currentId = form.getValues('aiVoiceId');
-    if (!currentId) return;
-    const selected = allVoices.find((voice) => voice.id === currentId);
-    if (selected && selected.gender !== gender && selected.gender !== 'neutral') {
-      form.setValue('aiVoiceId', '', { shouldDirty: true });
+    // A pick of the other gender drops out of its list; clear it so the voice
+    // and the Urdu verb forms (kar sakti / kar sakta) agree.
+    for (const field of ['aiVoiceId', 'aiVoiceIdUrdu'] as const) {
+      const selected = allVoices.find((voice) => voice.id === form.getValues(field));
+      if (selected && selected.gender !== gender && selected.gender !== 'neutral') {
+        form.setValue(field, '', { shouldDirty: true });
+      }
     }
   };
 
-  const playPreview = (language: 'en' | 'ur') => {
-    const voiceId =
-      selectedVoiceId ||
-      voicesForGender.find((voice) => voice.gender === voiceGender)?.id ||
-      voicesForGender[0]?.id ||
-      defaultVoiceMeta.id;
+  // No guessing a voice here: an empty id previews the default on the server,
+  // through the same path a reply takes. The old picker previewed the first
+  // voice of the gender in the list, which was not what clients heard.
+  const playPreview = (language: VoiceLanguage) => {
     previewVoice.mutate({
-      voiceId,
+      voiceId: form.getValues(voiceField(language)),
       language,
       voiceGender,
       tone: form.getValues('aiTone'),
       displayName,
     });
   };
+
+  const playingLabel = (() => {
+    if (!playing) return null;
+    const name =
+      allVoices.find((voice) => voice.id === playing.voiceId)?.name ??
+      (playing.voiceId ? playing.voiceId : t('aiDefaultVoiceNamed').replace('{name}', '…'));
+    return t('aiVoicePreviewNowPlaying')
+      .replace('{voice}', name)
+      .replace('{language}', playing.language === 'ur' ? t('aiVoiceLanguageUrdu') : t('aiVoiceLanguageEnglish'));
+  })();
 
   if (settings.isPending) {
     return (
@@ -396,7 +414,11 @@ export function AiSettingsCard() {
               />
             </div>
 
-            <Field label={t('aiAssistantVoiceGender')} error={form.formState.errors.aiVoiceGender?.message}>
+            <Field
+              label={t('aiAssistantVoiceGender')}
+              hint={t('aiVoiceGenderHint')}
+              error={form.formState.errors.aiVoiceGender?.message}
+            >
               <div className="flex flex-wrap gap-2">
                 {([
                   { value: 'female' as const, label: t('aiVoiceFemale') },
@@ -415,37 +437,22 @@ export function AiSettingsCard() {
               </div>
             </Field>
 
-            <Field label={t('aiVoiceSelect')} hint={t('aiVoiceSelectHint')}>
-              <Select
-                value={selectedVoiceId || 'default'}
-                onValueChange={(value) => {
-                  if (!value || value === 'default') {
-                    form.setValue('aiVoiceId', '', { shouldDirty: true });
-                    return;
-                  }
-                  form.setValue('aiVoiceId', value, { shouldDirty: true });
-                  const voice = allVoices.find((item) => item.id === value);
-                  if (voice?.gender === 'male' || voice?.gender === 'female') {
-                    form.setValue('aiVoiceGender', voice.gender, { shouldDirty: true });
-                  }
-                }}
+            {(['ur', 'en'] as const).map((language) => (
+              <VoicePicker
+                key={language}
+                language={language}
+                label={language === 'ur' ? t('aiUrduVoice') : t('aiEnglishVoice')}
+                hint={language === 'ur' ? t('aiUrduVoiceHint') : t('aiEnglishVoiceHint')}
+                value={form.watch(voiceField(language))}
+                onChange={(id) => form.setValue(voiceField(language), id, { shouldDirty: true })}
+                voices={voicesForGender}
+                defaultVoiceName={defaults?.[language][voiceGender].name}
                 disabled={voices.isPending}
-              >
-                <SelectTrigger className="w-full max-w-md">
-                  <SelectValue placeholder={t('aiDefaultVoice')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="default">
-                    {t('aiDefaultVoiceNamed').replace('{name}', defaultVoiceLabel)}
-                  </SelectItem>
-                  {voicesForGender.map((voice) => (
-                    <SelectItem key={voice.id} value={voice.id}>
-                      {voice.name} · {voice.accent}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
+                previewing={previewVoice.isPending && previewVoice.variables?.language === language}
+                previewDisabled={previewVoice.isPending || voices.isPending}
+                onPreview={() => playPreview(language)}
+              />
+            ))}
 
             <Field label={t('aiToneLabel')} hint={t('aiToneHint')} error={form.formState.errors.aiTone?.message}>
               <div className="flex flex-wrap gap-2">
@@ -469,31 +476,11 @@ export function AiSettingsCard() {
 
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">{t('aiVoicePreviewHint')}</p>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={previewVoice.isPending || voices.isPending}
-                  onClick={() => playPreview('en')}
-                >
-                  {previewVoice.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Volume2 className="h-4 w-4" />}
-                  {t('aiPreviewEn')}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={previewVoice.isPending || voices.isPending}
-                  onClick={() => playPreview('ur')}
-                >
-                  {previewVoice.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Volume2 className="h-4 w-4" />}
-                  {t('aiPreviewUr')}
-                </Button>
-              </div>
               {previewUrl ? (
                 <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground">{t('aiVoicePreviewPlayer')}</p>
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {playingLabel ?? t('aiVoicePreviewPlayer')}
+                  </p>
                   <audio ref={playerRef} src={previewUrl} controls preload="auto" className="w-full max-w-md" />
                 </div>
               ) : (
@@ -604,6 +591,108 @@ export function AiSettingsCard() {
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * One reply language's voice: a picker grouped by what suits that language,
+ * and a preview of exactly that voice. English and Urdu are chosen apart — the
+ * voices that say Urdu sounds correctly are not the best English ones, and one
+ * shared pick read Urdu with an English accent.
+ */
+function VoicePicker({
+  language,
+  label,
+  hint,
+  value,
+  onChange,
+  voices,
+  defaultVoiceName,
+  disabled,
+  previewing,
+  previewDisabled,
+  onPreview,
+}: {
+  language: VoiceLanguage;
+  label: string;
+  hint: string;
+  value: string;
+  onChange: (voiceId: string) => void;
+  voices: TtsVoice[];
+  defaultVoiceName: string | undefined;
+  disabled: boolean;
+  previewing: boolean;
+  previewDisabled: boolean;
+  onPreview: () => void;
+}) {
+  const { t } = useLanguage();
+  const recommended = voices.filter((voice) => voice.recommendedFor?.includes(language));
+  const others = voices.filter((voice) => !voice.recommendedFor?.includes(language));
+  const defaultLabel = t('aiDefaultVoiceNamed').replace('{name}', shortVoiceName(defaultVoiceName) || '…');
+  const optionLabel = (voice: TtsVoice) => `${voice.name} · ${voice.accent}`;
+  // The trigger shows labels, not raw values: without this map it showed the
+  // word "default", or a 20-character voice id once one was picked.
+  const items: Record<string, string> = { default: defaultLabel };
+  for (const voice of voices) items[voice.id] = optionLabel(voice);
+  if (value && !items[value]) items[value] = value;
+
+  return (
+    <Field label={label} hint={hint}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Select
+          items={items}
+          value={value || 'default'}
+          onValueChange={(next) => onChange(!next || next === 'default' ? '' : String(next))}
+          disabled={disabled}
+        >
+          <SelectTrigger className="w-full max-w-md flex-1" aria-label={label}>
+            <SelectValue />
+          </SelectTrigger>
+          {/* Voice names are long ("Anika – Empathetic E-commerce Support"); a
+              popup pinned to the trigger's width cut them off on a phone. */}
+          <SelectContent className="w-auto min-w-(--anchor-width) max-w-[min(28rem,calc(100vw-2rem))]">
+            <SelectItem value="default">{defaultLabel}</SelectItem>
+            {recommended.length > 0 ? (
+              <>
+                <SelectSeparator />
+                <SelectGroup>
+                  <SelectLabel>
+                    {language === 'ur' ? t('aiVoiceGroupRecommendedUr') : t('aiVoiceGroupRecommendedEn')}
+                  </SelectLabel>
+                  {recommended.map((voice) => (
+                    <SelectItem key={voice.id} value={voice.id}>
+                      {optionLabel(voice)}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </>
+            ) : null}
+            {others.length > 0 ? (
+              <>
+                <SelectSeparator />
+                <SelectGroup>
+                  <SelectLabel>{t('aiVoiceGroupOther')}</SelectLabel>
+                  {others.map((voice) => (
+                    <SelectItem key={voice.id} value={voice.id}>
+                      {optionLabel(voice)}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </>
+            ) : null}
+          </SelectContent>
+        </Select>
+        <Button type="button" size="sm" variant="outline" disabled={previewDisabled} onClick={onPreview}>
+          {previewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Volume2 className="h-4 w-4" />}
+          {t('aiPreviewVoice')}
+        </Button>
+      </div>
+    </Field>
+  );
+}
+
+/** "Anika – Empathetic E-commerce Support" → "Anika", for the compact default label. */
+function shortVoiceName(name: string | undefined): string {
+  return name?.split(/\s+[–—-]\s+/)[0]?.trim() ?? '';
 }
 
 function AssumptionToggle({

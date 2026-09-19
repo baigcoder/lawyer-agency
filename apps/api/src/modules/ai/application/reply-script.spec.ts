@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { clientWritesLatin, isRomanUrduReply, replyLanguageLabel, replyScript, wantsRomanUrdu } from './reply-script';
-import { defaultDisclosure, defaultSpokenDisclosure, mergePromptVariables } from './ai-prompt-variables';
+import { defaultDisclosure, defaultSpokenDisclosure, mergePromptVariables, stripLeadingAiSelfIntros } from './ai-prompt-variables';
 import { buildAiAssumptionsBlock, defaultAiSettings, urduGenderInstruction } from '../../firm-profile/application/ai-settings.dto';
 
 const vars = { displayName: 'Talha Law', ownerName: 'Not provided' };
@@ -174,5 +174,43 @@ describe('wantsRomanUrdu', () => {
     expect(wantsRomanUrdu('UR', 'mera case kab lagega', true)).toBe(false);
     expect(wantsRomanUrdu('UR', 'میرا کیس کب لگے گا', false)).toBe(false);
     expect(wantsRomanUrdu('EN', 'when is my hearing', false)).toBe(false);
+  });
+});
+
+describe('"ki assistant" for a female voice', () => {
+  // The possessive agrees with the speaker. A female voice saying
+  // "کا اسسٹنٹ ہوں" is heard as a man's line.
+  it('agrees in Urdu script', () => {
+    expect(defaultDisclosure('UR', vars, { voiceGender: 'female' })).toContain('کی اسسٹنٹ ہوں');
+    expect(defaultDisclosure('UR', vars, { voiceGender: 'male' })).toContain('کا اسسٹنٹ ہوں');
+  });
+
+  it('agrees in Roman Urdu', () => {
+    expect(defaultDisclosure('UR', vars, { romanUrdu: true, voiceGender: 'female' })).toContain('ki assistant hoon');
+    expect(defaultDisclosure('UR', vars, { romanUrdu: true, voiceGender: 'male' })).toContain('ka assistant hoon');
+  });
+
+  it('agrees in the spoken line at the start of a voice note', () => {
+    expect(defaultSpokenDisclosure('UR', vars, 'female')).toContain('کی اسسٹنٹ ہوں');
+    expect(defaultSpokenDisclosure('UR', vars, 'male')).toContain('کا اسسٹنٹ ہوں');
+  });
+
+  it('defaults to the female form, matching the default voice', () => {
+    expect(defaultDisclosure('UR', vars)).toContain('کی اسسٹنٹ');
+    expect(defaultSpokenDisclosure('UR', vars)).toContain('کی اسسٹنٹ');
+  });
+
+  it('tells the model the same, so its own replies agree', () => {
+    expect(urduGenderInstruction('female')).toContain('ki assistant hoon');
+    expect(urduGenderInstruction('male')).toContain('ka assistant hoon');
+  });
+});
+
+describe('stripping a model-written intro', () => {
+  it('drops the feminine follow-up too, not only "دوں گا"', () => {
+    const body = stripLeadingAiSelfIntros(
+      'میں ABC کی اسسٹنٹ ہوں، وکیل نہیں۔ آپ کے میسج اور وائس نوٹ کا جواب میں دوں گی۔ آپ کا مسئلہ کیا ہے؟',
+    );
+    expect(body).toBe('آپ کا مسئلہ کیا ہے؟');
   });
 });

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../../../config/env';
 import type {
+  DefaultVoices,
   SynthesizeInput,
   SynthesizeResult,
   TextToSpeechPort,
@@ -22,7 +23,7 @@ export const DEFAULT_VOICE_FEMALE = 'EXAVITQu4vr4xnSDxMaL';
 export const URDU_DEFAULT_VOICE_FEMALE = 'FGY2WhTYpPnrIDTdsKH5'; // Laura
 export const URDU_DEFAULT_VOICE_MALE = 'JBFqnCBsd6RMkjVDRZzb'; // George
 
-const CURATED_VOICES: TtsVoice[] = [
+const CURATED_VOICES: TtsVoice[] = ([
   { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura', gender: 'female', accent: 'Multilingual' },
   { id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Alice', gender: 'female', accent: 'Multilingual' },
   { id: 'cgSgspJ2msm6clMCkdW9', name: 'Jessica', gender: 'female', accent: 'Multilingual' },
@@ -33,7 +34,7 @@ const CURATED_VOICES: TtsVoice[] = [
   { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian', gender: 'male', accent: 'Multilingual' },
   { id: DEFAULT_VOICE_MALE, name: 'Adam', gender: 'male', accent: 'American' },
   { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', gender: 'male', accent: 'British' },
-];
+] satisfies TtsVoice[]).map((voice) => ({ ...voice, language: 'en', recommendedFor: ['en'] }));
 
 interface ElevenLabsVoicePayload {
   voice_id?: unknown;
@@ -175,6 +176,7 @@ export class ElevenLabsTtsClient implements TextToSpeechPort {
           const audioBuffer = Buffer.from(await response.arrayBuffer());
           return {
             audioBuffer,
+            voiceId,
             mimeType: pcm ? 'audio/pcm' : 'audio/mpeg',
             // ElevenLabs bills the text it actually spoke, which is the
             // normalized and clipped body — not the caller's raw input.
@@ -213,15 +215,21 @@ export class ElevenLabsTtsClient implements TextToSpeechPort {
    * the whole chain before reaching espeak.
    */
   private resolveVoiceId(input: SynthesizeInput, language: 'ur' | 'en'): string {
-    const configured = input.voiceId?.trim();
+    // The firm's pick for *this* language only. The English pick used to speak
+    // Urdu too, reading Urdu script with English phonetics.
+    const configured = (language === 'ur' ? input.urduVoiceId : input.voiceId)?.trim();
     if (configured) {
       if (isValidVoiceId(configured)) return configured;
-      this.logger.warn({ voiceId: configured.slice(0, 12) }, 'ignoring malformed aiVoiceId');
+      this.logger.warn({ voiceId: configured.slice(0, 12), language }, 'ignoring malformed voice id');
     }
-    if (language === 'ur') {
-      return input.voiceGender === 'male' ? this.urduVoiceMale : this.urduVoiceFemale;
-    }
-    return input.voiceGender === 'male' ? this.voiceMale : this.voiceFemale;
+    return this.defaultVoices()[language][input.voiceGender];
+  }
+
+  defaultVoices(): DefaultVoices {
+    return {
+      en: { female: this.voiceFemale, male: this.voiceMale },
+      ur: { female: this.urduVoiceFemale, male: this.urduVoiceMale },
+    };
   }
 
   private async postTts(url: string, body: object, pcm: boolean, deadline: number): Promise<Response> {
@@ -292,8 +300,35 @@ function parseVoiceList(payload: unknown): TtsVoice[] {
       typeof labels['accent'] === 'string' && labels['accent'].trim()
         ? titleCase(labels['accent'])
         : 'Multilingual';
-    return [{ id: row.voice_id, name: row.name, gender, accent }];
+    const language =
+      typeof labels['language'] === 'string' && labels['language'].trim()
+        ? labels['language'].trim().toLowerCase()
+        : undefined;
+    return [
+      {
+        id: row.voice_id,
+        name: row.name,
+        gender,
+        accent,
+        ...(language ? { language } : {}),
+        recommendedFor: voiceRecommendedFor(language, row.name),
+      },
+    ];
   });
+}
+
+/**
+ * Which reply languages a voice suits. ElevenLabs has no Urdu language label —
+ * its Urdu voices are tagged `hi` — so Hindi-labelled voices, and any voice
+ * named for Urdu, are offered first for Urdu: they carry the retroflex and
+ * aspirated sounds an English voice flattens. English-labelled voices are
+ * offered for English. Anything else is listed under "other voices" in both.
+ */
+export function voiceRecommendedFor(language: string | undefined, name: string): Array<'en' | 'ur'> {
+  const lang = language?.toLowerCase();
+  if (lang === 'hi' || lang === 'ur' || /urdu/i.test(name)) return ['ur'];
+  if (!lang || lang === 'en') return ['en'];
+  return [];
 }
 
 /** Hard cap so a large library cannot bloat the settings payload. */

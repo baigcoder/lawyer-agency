@@ -52,13 +52,23 @@ describe('VoicePreviewService', () => {
     });
     expect(preview.mimeType).toBe('audio/mpeg');
     expect(preview.audioBase64).toBe(Buffer.from('abc').toString('base64'));
+    // An Urdu preview uses the Urdu pick, never the English one.
     expect(tts.synthesize).toHaveBeenCalledWith(
       expect.objectContaining({
-        voiceId: 'v1',
+        urduVoiceId: 'v1',
         language: 'ur',
         voiceGender: 'male',
         text: expect.stringContaining('Talha'),
       }),
     );
+  });
+});
+
+describe('Urdu preview gender', () => {
+  it('says "کی اسسٹنٹ" in a female voice and "کا اسسٹنٹ" in a male one', () => {
+    for (const tone of ['friendly', 'formal', 'concise'] as const) {
+      expect(buildVoicePreviewText({ language: 'ur', tone, displayName: 'طلہ لاء', voiceGender: 'female' })).toContain('کی اسسٹنٹ');
+      expect(buildVoicePreviewText({ language: 'ur', tone, displayName: 'طلہ لاء', voiceGender: 'male' })).toContain('کا اسسٹنٹ');
+    }
   });
 });
