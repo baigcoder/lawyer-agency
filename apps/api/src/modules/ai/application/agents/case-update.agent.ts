@@ -69,6 +69,7 @@ export class CaseUpdateAgent {
       ],
       outputSchema: caseUpdateSchema,
       model: choice.model,
+      fallbackModel: choice.fallbackModel,
       pricing: choice,
       promptVersionId: prompt.id,
       correlationId: params.correlationId,

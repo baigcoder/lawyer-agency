@@ -207,3 +207,43 @@ describe('withFailureLogging', () => {
     expect(logFailure).not.toHaveBeenCalled();
   });
 });
+
+describe('rate-limit fallback model', () => {
+  const throttled = (retryAfterSeconds: number) =>
+    ({
+      ok: false,
+      status: 429,
+      headers: new Headers({ 'retry-after': String(retryAfterSeconds) }),
+      text: async () => 'Rate limit reached on tokens per minute (TPM)',
+    }) as unknown as Response;
+
+  it('switches at once instead of waiting out the limit', async () => {
+    await withFetch([throttled(30), ok('{"triggered":false}')], async (bodies) => {
+      const started = Date.now();
+      const result = await call(makeAdapter(), { model: 'openai/gpt-oss-120b', fallbackModel: 'openai/gpt-oss-20b' });
+      // Waiting would have taken the 30s the provider asked for.
+      expect(Date.now() - started).toBeLessThan(1_000);
+      expect(bodies.map((b) => (b as { model: string }).model)).toEqual(['openai/gpt-oss-120b', 'openai/gpt-oss-20b']);
+      expect(result.model).toBe('openai/gpt-oss-20b');
+    });
+  });
+
+  it('waits and retries the same model when there is no fallback', async () => {
+    await withFetch([throttled(0), ok('{"triggered":false}')], async (bodies) => {
+      const result = await call(makeAdapter(), { model: 'openai/gpt-oss-120b' });
+      expect(bodies.map((b) => (b as { model: string }).model)).toEqual(['openai/gpt-oss-120b', 'openai/gpt-oss-120b']);
+      expect(result.model).toBe('openai/gpt-oss-120b');
+    });
+  });
+
+  it('never bounces back when the fallback is throttled too', async () => {
+    await withFetch([throttled(0), throttled(0), ok('{"triggered":false}')], async (bodies) => {
+      await call(makeAdapter(), { model: 'openai/gpt-oss-120b', fallbackModel: 'openai/gpt-oss-20b' });
+      expect(bodies.map((b) => (b as { model: string }).model)).toEqual([
+        'openai/gpt-oss-120b',
+        'openai/gpt-oss-20b',
+        'openai/gpt-oss-20b',
+      ]);
+    });
+  });
+});

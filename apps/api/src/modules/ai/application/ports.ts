@@ -19,6 +19,11 @@ export interface AiCallOptions<T extends z.ZodType> {
   /** Model chosen by the router (D-006); adapter falls back to AI_DEFAULT_MODEL when absent. */
   model?: string | null | undefined;
   /**
+   * Tried at once when `model` answers 429, instead of waiting out its limit.
+   * Groq's free-tier limits are per model, so this one has its own quota.
+   */
+  fallbackModel?: string | null | undefined;
+  /**
    * Rates for the chosen model, so `costMicros` reflects what was actually
    * billed. Without it the adapter charges list price for gpt-4o-mini, even
    * for a free model.
@@ -101,6 +106,8 @@ export const RETRIEVER = Symbol('RETRIEVER');
 export interface ModelChoice extends TokenPricing {
   provider: string;
   model: string;
+  /** Same provider, separate rate-limit quota; used when `model` is throttled. */
+  fallbackModel?: string | undefined;
 }
 
 export interface ModelRouter {

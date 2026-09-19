@@ -74,6 +74,7 @@ export class GreetingAgent {
         ],
         outputSchema: greetingSchema,
         model: choice.model,
+        fallbackModel: choice.fallbackModel,
         pricing: choice,
         promptVersionId: prompt.id,
         correlationId: params.correlationId,

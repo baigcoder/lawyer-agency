@@ -57,7 +57,10 @@ export class OpenAiAdapter implements AiClient {
     const runtime = resolveChatCompletionsRuntime(this.config);
     if (!runtime) throw new AiProviderError(this.provider, 'GROQ_API_KEY or OPENAI_API_KEY not configured');
     const { apiKey, baseUrl } = runtime;
-    const model: string = options.model ?? this.config.get('AI_DEFAULT_MODEL', { infer: true });
+    // `let`: a 429 moves the call to `options.fallbackModel`. The result and
+    // ai_logs then name the model that actually answered. Cost stays priced at
+    // the chosen model's rates — both gpt-oss models are free on Groq.
+    let model: string = options.model ?? this.config.get('AI_DEFAULT_MODEL', { infer: true });
     const started = Date.now();
     const maxAttempts = 4;
     // A WhatsApp turn that retries for a minute is worse than a fallback reply.
@@ -178,6 +181,17 @@ export class OpenAiAdapter implements AiClient {
         // Groq's 429 body says which limit was hit — per minute or per day —
         // and a daily limit means every call fails until it resets.
         lastError = new AiProviderError(this.provider, `HTTP ${response.status}: ${text.slice(0, 300)}`);
+        if (response.status === 429 && options.fallbackModel && model !== options.fallbackModel) {
+          // The limit is this model's alone; the fallback has its own quota.
+          // Switch at once rather than wait — and never switch back, so two
+          // throttled models cannot bounce the call between them.
+          this.logger.warn(
+            { agent: options.agent, from: model, to: options.fallbackModel, attempt },
+            'model rate-limited, switching to fallback model',
+          );
+          model = options.fallbackModel;
+          continue;
+        }
         if (attempt < maxAttempts - 1) {
           const waitMs =
             response.status === 429 ? this.parseRetryAfter(response, text) : backoffMs(attempt);

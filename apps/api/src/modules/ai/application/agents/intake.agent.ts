@@ -79,6 +79,7 @@ export class IntakeAgent {
       ],
       outputSchema: intakeSchema,
       model: choice.model,
+      fallbackModel: choice.fallbackModel,
       pricing: choice,
       promptVersionId: prompt.id,
       correlationId: params.correlationId,

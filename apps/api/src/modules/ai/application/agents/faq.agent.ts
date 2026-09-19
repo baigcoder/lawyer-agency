@@ -76,6 +76,7 @@ export class FaqAgent {
       ],
       outputSchema: faqSchema,
       model: choice.model,
+      fallbackModel: choice.fallbackModel,
       pricing: choice,
       promptVersionId: prompt.id,
       correlationId: params.correlationId,

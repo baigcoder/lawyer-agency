@@ -59,6 +59,7 @@ export class GreetingIntroGeneratorService {
         ],
         outputSchema: introSchema,
         model: choice.model,
+        fallbackModel: choice.fallbackModel,
         pricing: choice,
         temperature: 0.4,
         maxTokens: 300,

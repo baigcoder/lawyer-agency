@@ -85,6 +85,22 @@ function isCallable(entry: ModelChoice): boolean {
   return IMPLEMENTED_PROVIDERS.has(entry.provider);
 }
 
+/**
+ * Where a call goes when its model answers 429. Groq's free-tier limits are per
+ * model — 8K tokens a minute and 200K a day each — so the other gpt-oss model
+ * has its own untouched quota. One intake reply costs ~2,300 tokens, so 120b
+ * alone throttles after ~3 replies a minute and runs dry after ~85 a day,
+ * while 20b sat mostly idle.
+ *
+ * Measured on the intake prompt (Roman Urdu, Urdu script, English): 20b gave
+ * 5/5 valid replies in the client's script, a little less polished than 120b —
+ * far better than a 15s wait or the canned fallback reply.
+ */
+const RATE_LIMIT_FALLBACK: Record<string, string> = {
+  'openai/gpt-oss-120b': 'openai/gpt-oss-20b',
+  'openai/gpt-oss-20b': 'openai/gpt-oss-120b',
+};
+
 const AGENT_DEFAULTS: Record<string, string> = {
   router: 'groq/openai/gpt-oss-20b',
   intake: 'groq/openai/gpt-oss-120b',
@@ -113,7 +129,7 @@ export class ModelRouterService implements ModelRouter {
     const allowedKeys = tenantAllowlist.length > 0 ? tenantAllowlist : Object.keys(CATALOG);
     const preferredEntry = CATALOG[preferred];
     if (preferredEntry && allowedKeys.includes(preferred) && isCallable(preferredEntry)) {
-      return toChoice(preferredEntry);
+      return withFallback(toChoice(preferredEntry), allowedKeys);
     }
 
     const candidates = allowedKeys
@@ -133,7 +149,7 @@ export class ModelRouterService implements ModelRouter {
         `No usable AI model for tenant ${tenantId}: the allow-list has no model from an implemented provider (${[...IMPLEMENTED_PROVIDERS].join(', ')}).`,
       );
     }
-    return toChoice(chosen);
+    return withFallback(toChoice(chosen), allowedKeys);
   }
 
   async checkBudget(tenantId: string, estimatedCostMicros: number): Promise<boolean> {
@@ -159,6 +175,20 @@ export class ModelRouterService implements ModelRouter {
     const model = this.config.get('AI_DEFAULT_MODEL', { infer: true });
     return `${provider}/${model}`;
   }
+}
+
+/**
+ * Adds the rate-limit fallback when the tenant may use it. The allow-list is a
+ * tenant's say over which models see its data, so the fallback obeys it too.
+ */
+function withFallback(choice: ModelChoice, allowedKeys: string[]): ModelChoice {
+  const fallback = RATE_LIMIT_FALLBACK[choice.model];
+  if (!fallback) return choice;
+  const allowed = allowedKeys.some((key) => {
+    const entry = CATALOG[key];
+    return entry?.model === fallback && entry.provider === choice.provider && isCallable(entry);
+  });
+  return allowed ? { ...choice, fallbackModel: fallback } : choice;
 }
 
 function toChoice(entry: ModelChoice & Pricing): ModelChoice {

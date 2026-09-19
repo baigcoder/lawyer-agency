@@ -77,6 +77,7 @@ export class MasterRouterService {
       ],
       outputSchema: routerSchema,
       model: choice.model,
+      fallbackModel: choice.fallbackModel,
       pricing: choice,
       promptVersionId: prompt.id,
       correlationId: params.correlationId,

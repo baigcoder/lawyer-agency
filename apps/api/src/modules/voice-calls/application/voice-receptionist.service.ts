@@ -158,6 +158,7 @@ export class VoiceReceptionistService {
       tenantId: session.tenantId,
       agent: 'voice-receptionist',
       model: choice.model,
+      fallbackModel: choice.fallbackModel,
       pricing: choice,
       outputSchema: turnSchema,
       // A caller waits in silence for this; a 20s default is a dead line.
@@ -335,6 +336,7 @@ export class VoiceReceptionistService {
         tenantId: session.tenantId,
         agent: 'voice-faq',
         model: choice.model,
+        fallbackModel: choice.fallbackModel,
         pricing: choice,
         outputSchema: faqSpeechSchema,
         timeoutMs: 9_000,
