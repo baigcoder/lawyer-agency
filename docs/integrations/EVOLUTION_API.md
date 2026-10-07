@@ -1,0 +1,105 @@
+# Evolution API Integration — Unified WhatsApp Transport
+
+## 1. Architectural Mandate & Role
+
+Per Architecture Decision [D-106](file:///f:/lawyer_agency/docs/decision-log.md), **Evolution API v2** serves as the sole, unified transport layer for WhatsApp communications in Wakeel. It decouples the core NestJS domain application from WhatsApp protocol churn, hosting both Baileys QR-paired multi-device sessions (for pilot and cost-sensitive law firms) and official Meta Cloud API instances within a single containerized gateway.
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        Wakeel NestJS Backend                           │
+│  (UnitOfWork, AI Agent Loop, Triage Pipeline, Lawyer Dashboard)        │
+└───────────────────▲────────────────────────────────┬───────────────────┘
+                    │                                │
+      Inbound Webhook Events             Outbound REST API Calls
+   (POST /v1/whatsapp/webhook)            (Bearer EVOLUTION_API_KEY)
+                    │                                │
+┌───────────────────┴────────────────────────────────▼───────────────────┐
+│                    Evolution API v2 (Port 8080)                        │
+│                                                                        │
+│   ┌────────────────────────────────┐  ┌────────────────────────────┐   │
+│   │ Tenant Instance: "firm-alpha"  │  │ Tenant Instance: "firm-beta"│   │
+│   │  (Baileys Multi-Device QR)     │  │  (Meta Official Cloud API) │   │
+│   │  • Windows UWP Call Patch      │  │  • Meta Graph Webhook Relay│   │
+│   │  • Zero-History Sync           │  │  • 24h Template Dispatcher │   │
+│   └────────────────────────────────┘  └────────────────────────────┘   │
+└───────────────────▲────────────────────────────────▲───────────────────┘
+                    │                                │
+             WhatsApp Network                 Meta Graph API
+           (E2EE Multi-Device)             (Cloud Infrastructure)
+```
+
+---
+
+## 2. Container Configuration & Optimizations
+
+Evolution API is provisioned with dedicated PostgreSQL and Redis instances to isolate session keys from application traffic (`docker-compose.yml`):
+
+### 2.1 Critical Environment Flags
+- **`CONFIG_SESSION_PHONE_CLIENT=Windows` / `CONFIG_SESSION_PHONE_NAME=UWP`:** Essential for WhatsApp voice calling. Without a Windows desktop client identity, WhatsApp's network refuses to route WebRTC/RTP audio streams.
+- **`DATABASE_SAVE_DATA_CHATS=false` / `DATABASE_SAVE_DATA_HISTORIC=false`:** Disables historical chat synchronization upon QR pairing. In Pakistani law firms with 5+ years of existing WhatsApp chats, downloading past history causes socket buffer exhaustion and HTTP 408 handshake timeouts.
+- **`CACHE_LOCAL_ENABLED=true` / `CACHE_REDIS_ENABLED=false`:** Mitigates Redis network roundtrip latency during pre-key cryptographic handshakes.
+- **`NODE_OPTIONS=--dns-result-order=ipv4first`:** Ensures stable connectivity to WhatsApp signaling servers across IPv6-challenged networks.
+
+---
+
+## 3. Surgical Wavoip Baileys Patch (`infra/evolution/`)
+
+To support live incoming phone calls over Baileys QR sessions, Evolution API is built from a custom Dockerfile that injects `apply-wavoip-baileys-patch.mjs` during container build:
+
+```javascript
+// Patches Baileys validate-connection.js
+src = src.replace(
+  /let webSubPlatform = proto\.ClientPayload\.WebInfo\.WebSubPlatform\.WEB_BROWSER;/,
+  'let webSubPlatform = proto.ClientPayload.WebInfo.WebSubPlatform.WIN_HYBRID;'
+);
+src = src.replace(
+  /Windows:\s*proto\.ClientPayload\.WebInfo\.WebSubPlatform\.WIN32/,
+  'Windows: proto.ClientPayload.WebInfo.WebSubPlatform.WIN_HYBRID'
+);
+```
+Furthermore, the patch removes `volatile.timeout(1000)` wrappers around `CB:call` signaling events, preventing dropped calls when network packets experience minor latency jitter.
+
+---
+
+## 4. REST Client Operations (`evolution-api.client.ts`)
+
+Wakeel's `EvolutionApiClient` communicates with Evolution API via JSON over HTTP:
+
+### 4.1 Instance Provisioning
+- **`POST /instance/create`:** Creates an isolated WhatsApp session named after the law firm slug (`instanceName: "malik-law"`).
+  ```json
+  {
+    "instanceName": "malik-law",
+    "token": "inst_sec_984210",
+    "qrcode": true,
+    "integration": "WHATSAPP-BAILEYS"
+  }
+  ```
+
+### 4.2 QR Code Pairing & Connection Polling
+- **`GET /instance/connect/{instanceName}`:** Returns the base64 QR code image string displayed in the Wakeel dashboard settings tab.
+- **`GET /instance/connectionState/{instanceName}`:** Returns connection state (`open`, `connecting`, `close`).
+
+### 4.3 Message Dispatch
+- **`POST /message/sendText/{instanceName}`:** Sends standard text replies within the active conversation window.
+  ```json
+  {
+    "number": "923001234567",
+    "text": "السلام علیکم۔ وکیل اسسٹنٹ میں خوش آمدید۔"
+  }
+  ```
+- **`POST /message/sendMedia/{instanceName}`:** Sends voice note audio (OGG Opus) generated by ElevenLabs or case documents (PDFs).
+
+---
+
+## 5. Webhook Ingestion & Idempotency Pipeline
+
+Evolution API posts webhook events to `POST /v1/whatsapp/webhook`. The pipeline enforces strict idempotency:
+
+1. **Authentication:** Request bears `apikey: EVOLUTION_API_KEY` header.
+2. **Payload Parsing:** Normalizes `messages.upsert` payload into standard Wakeel format:
+   - Extract `fromMe` (ignored if true).
+   - Extract sender MSISDN (`remoteJid` stripped of `@s.whatsapp.net`).
+   - Extract external message ID (`key.id`).
+3. **Idempotency Check:** Records message ID in `platform.webhook_events`. Duplicates are dropped with HTTP 200 `DUPLICATE`.
+4. **Queue Dispatch:** Pushes valid events to BullMQ `whatsapp-inbound` queue for AI agent processing.

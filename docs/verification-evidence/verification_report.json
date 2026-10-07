@@ -1,0 +1,336 @@
+{
+  "timestamp": "2026-10-07T17:49:52.033Z",
+  "routesVerified": [
+    {
+      "path": "/dashboard",
+      "name": "Overview",
+      "status": "PASS",
+      "loadMs": 529,
+      "hasOverflow": false,
+      "fcp": 364
+    },
+    {
+      "path": "/dashboard/inbox",
+      "name": "Inbox",
+      "status": "PASS",
+      "loadMs": 475,
+      "hasOverflow": false,
+      "fcp": 224
+    },
+    {
+      "path": "/dashboard/escalations",
+      "name": "Escalations",
+      "status": "PASS",
+      "loadMs": 429,
+      "hasOverflow": false,
+      "fcp": 156
+    },
+    {
+      "path": "/dashboard/cases",
+      "name": "Cases",
+      "status": "PASS",
+      "loadMs": 485,
+      "hasOverflow": false,
+      "fcp": 220
+    },
+    {
+      "path": "/dashboard/calendar",
+      "name": "Calendar",
+      "status": "PASS",
+      "loadMs": 527,
+      "hasOverflow": false,
+      "fcp": 228
+    },
+    {
+      "path": "/dashboard/documents",
+      "name": "Documents",
+      "status": "PASS",
+      "loadMs": 488,
+      "hasOverflow": false,
+      "fcp": 204
+    },
+    {
+      "path": "/dashboard/knowledge",
+      "name": "Knowledge",
+      "status": "PASS",
+      "loadMs": 588,
+      "hasOverflow": false,
+      "fcp": 228
+    },
+    {
+      "path": "/dashboard/whatsapp",
+      "name": "WhatsApp",
+      "status": "PASS",
+      "loadMs": 632,
+      "hasOverflow": false,
+      "fcp": 228
+    },
+    {
+      "path": "/dashboard/payments",
+      "name": "Payments",
+      "status": "PASS",
+      "loadMs": 514,
+      "hasOverflow": false,
+      "fcp": 200
+    },
+    {
+      "path": "/dashboard/analytics",
+      "name": "Analytics",
+      "status": "PASS",
+      "loadMs": 485,
+      "hasOverflow": false,
+      "fcp": 224
+    },
+    {
+      "path": "/dashboard/team",
+      "name": "Team",
+      "status": "PASS",
+      "loadMs": 571,
+      "hasOverflow": false,
+      "fcp": 260
+    },
+    {
+      "path": "/dashboard/settings",
+      "name": "Settings",
+      "status": "PASS",
+      "loadMs": 490,
+      "hasOverflow": false,
+      "fcp": 228
+    }
+  ],
+  "workflowsVerified": {
+    "commandPalette": {
+      "open": true,
+      "dismiss": true
+    },
+    "aiDraftFlow": {
+      "visible": true,
+      "canApprove": true
+    },
+    "sessionGuard24h": {
+      "activeWindowVerified": true,
+      "expiredWindowGuarded": true
+    },
+    "escalationAction": {
+      "ackButtonPresent": true
+    },
+    "caseDossier": {
+      "dialogOpened": true
+    },
+    "themeToggle": {
+      "switched": true
+    },
+    "languageRtl": {
+      "rtlVerified": true
+    }
+  },
+  "accessibility": {
+    "/dashboard": {
+      "passes": 23,
+      "violationsCount": 1,
+      "violationsByImpact": {
+        "critical": 0,
+        "serious": 1,
+        "moderate": 0,
+        "minor": 0
+      },
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=axeAPI"
+        }
+      ]
+    },
+    "/dashboard/inbox": {
+      "passes": 26,
+      "violationsCount": 1,
+      "violationsByImpact": {
+        "critical": 0,
+        "serious": 1,
+        "moderate": 0,
+        "minor": 0
+      },
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=axeAPI"
+        }
+      ]
+    },
+    "/dashboard/escalations": {
+      "passes": 25,
+      "violationsCount": 1,
+      "violationsByImpact": {
+        "critical": 0,
+        "serious": 1,
+        "moderate": 0,
+        "minor": 0
+      },
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=axeAPI"
+        }
+      ]
+    },
+    "/dashboard/cases": {
+      "passes": 27,
+      "violationsCount": 1,
+      "violationsByImpact": {
+        "critical": 0,
+        "serious": 1,
+        "moderate": 0,
+        "minor": 0
+      },
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=axeAPI"
+        }
+      ]
+    },
+    "/dashboard/calendar": {
+      "passes": 23,
+      "violationsCount": 1,
+      "violationsByImpact": {
+        "critical": 0,
+        "serious": 1,
+        "moderate": 0,
+        "minor": 0
+      },
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=axeAPI"
+        }
+      ]
+    },
+    "/dashboard/team": {
+      "passes": 26,
+      "violationsCount": 1,
+      "violationsByImpact": {
+        "critical": 0,
+        "serious": 1,
+        "moderate": 0,
+        "minor": 0
+      },
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=axeAPI"
+        }
+      ]
+    },
+    "/dashboard/settings": {
+      "passes": 23,
+      "violationsCount": 1,
+      "violationsByImpact": {
+        "critical": 0,
+        "serious": 1,
+        "moderate": 0,
+        "minor": 0
+      },
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=axeAPI"
+        }
+      ]
+    }
+  },
+  "responsive": {
+    "desktop_1440": {
+      "width": 1440,
+      "height": 900,
+      "hasOverflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "screenshot": "docs/verification-evidence/screenshots/inbox_desktop_1440.png"
+    },
+    "desktop_1280": {
+      "width": 1280,
+      "height": 800,
+      "hasOverflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "screenshot": "docs/verification-evidence/screenshots/inbox_desktop_1280.png"
+    },
+    "tablet_1024": {
+      "width": 1024,
+      "height": 768,
+      "hasOverflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "screenshot": "docs/verification-evidence/screenshots/inbox_tablet_1024.png"
+    },
+    "tablet_768": {
+      "width": 768,
+      "height": 1024,
+      "hasOverflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "screenshot": "docs/verification-evidence/screenshots/inbox_tablet_768.png"
+    },
+    "mobile_430": {
+      "width": 430,
+      "height": 932,
+      "hasOverflow": false,
+      "scrollWidth": 430,
+      "clientWidth": 430,
+      "screenshot": "docs/verification-evidence/screenshots/inbox_mobile_430.png"
+    },
+    "mobile_390": {
+      "width": 390,
+      "height": 844,
+      "hasOverflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "screenshot": "docs/verification-evidence/screenshots/inbox_mobile_390.png"
+    },
+    "mobile_375": {
+      "width": 375,
+      "height": 812,
+      "hasOverflow": false,
+      "scrollWidth": 375,
+      "clientWidth": 375,
+      "screenshot": "docs/verification-evidence/screenshots/inbox_mobile_375.png"
+    }
+  },
+  "performance": {
+    "/dashboard": {
+      "fcp": 240,
+      "loadDuration": 437,
+      "domInteractive": 179,
+      "domComplete": 437,
+      "cls": 0
+    },
+    "/dashboard/inbox": {
+      "fcp": 296,
+      "loadDuration": 535,
+      "domInteractive": 258,
+      "domComplete": 535,
+      "cls": 0
+    },
+    "/dashboard/cases": {
+      "fcp": 264,
+      "loadDuration": 504,
+      "domInteractive": 229,
+      "domComplete": 504,
+      "cls": 0
+    }
+  }
+}

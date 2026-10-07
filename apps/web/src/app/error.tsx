@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import Link from 'next/link';
-import { Scale } from 'lucide-react';
+import { WakeelMonogram } from '@/components/wakeel-monogram';
 import { Button } from '@/components/ui/button';
 
 /**
@@ -27,7 +27,7 @@ export default function ErrorPage({
   return (
     <main id="main" className="flex min-h-screen flex-col items-center justify-center gap-4 p-4 text-center">
       <div className="flex items-center gap-2 text-lg font-semibold">
-        <Scale className="h-5 w-5" aria-hidden />
+        <WakeelMonogram className="h-6 w-6" />
         Wakeel
       </div>
       <div className="max-w-md space-y-2">

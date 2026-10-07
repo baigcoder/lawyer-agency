@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { LoaderCircle, Mail, Save, UserPlus, Users } from 'lucide-react';
@@ -450,16 +450,17 @@ function TeamContent() {
     queryFn: () => apiRequest('/v1/users?limit=100', { schema: userListSchema }),
   });
 
-  const selected = useMemo(
-    () => lawyers.data?.find((l) => l.id === selectedId) ?? lawyers.data?.[0] ?? null,
-    [lawyers.data, selectedId],
-  );
+  const myUserId = session?.userId;
+  const defaultSelectedId = lawyers.data?.length
+    ? (myUserId ? lawyers.data.find((l) => l.userId === myUserId)?.id : null) ?? lawyers.data[0]?.id ?? null
+    : null;
 
-  useEffect(() => {
-    if (selectedId || !lawyers.data?.length || !session?.userId) return;
-    const mine = lawyers.data.find((l) => l.userId === session.userId);
-    if (mine) setSelectedId(mine.id);
-  }, [lawyers.data, selectedId, session?.userId]);
+  const activeSelectedId = selectedId ?? defaultSelectedId;
+
+  const selected = useMemo(
+    () => lawyers.data?.find((l) => l.id === activeSelectedId) ?? null,
+    [lawyers.data, activeSelectedId],
+  );
   const canEditSelected =
     canEditAvailability &&
     Boolean(

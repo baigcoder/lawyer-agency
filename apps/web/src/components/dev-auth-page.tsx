@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type FormEvent, useState } from 'react';
-import { Scale } from 'lucide-react';
+import { WakeelMonogram } from '@/components/wakeel-monogram';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field } from '@/components/ui/field';
@@ -57,9 +57,7 @@ export function DevAuthPage({ mode }: { mode: 'sign-in' | 'sign-up' }) {
   return (
     <main id="main" className="flex min-h-svh flex-col items-center justify-center bg-muted/30 p-4">
       <Link href="/" className="mb-8 flex items-center gap-2.5">
-        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <Scale className="h-4 w-4" aria-hidden />
-        </span>
+        <WakeelMonogram className="h-8 w-8" />
         <span className="text-lg font-bold tracking-tight">Wakeel</span>
       </Link>
 

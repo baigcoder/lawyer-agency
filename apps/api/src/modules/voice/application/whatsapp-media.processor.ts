@@ -14,7 +14,7 @@ import {
 import { DocumentRequestsService } from '../../documents/application/document-requests.service';
 import { PaymentInstructionService } from '../../payments/application/payment-instruction.service';
 import { SendService } from '../../whatsapp/application/send.service';
-import { EvolutionApiClient } from '../../whatsapp/infrastructure/evolution-api.client';
+import { EvolutionApiClient } from '../../whatsapp/whatsapp-ports.module';
 import {
   OBJECT_STORAGE,
   WHATSAPP_CONNECTION_REPOSITORY,

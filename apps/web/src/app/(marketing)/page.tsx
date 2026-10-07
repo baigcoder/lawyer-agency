@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   ArrowRight,
   BookOpenCheck,
+  Building2,
   CalendarClock,
   Check,
   CheckCircle2,
@@ -14,7 +15,6 @@ import {
   LayoutDashboard,
   MessageCircleMore,
   Phone,
-  Scale,
   ShieldCheck,
   Smartphone,
   UserRoundCheck,
@@ -42,7 +42,7 @@ function IconTile({
   icon: Icon,
   className,
 }: {
-  icon: typeof Scale;
+  icon: React.ComponentType<{ className?: string }>;
   className?: string;
 }) {
   return (
@@ -276,7 +276,7 @@ export default function Home() {
   ];
 
   const trust = [
-    { icon: Scale, text: t('trustedPakistanFirms') },
+    { icon: Building2, text: t('trustedPakistanFirms') },
     { icon: ShieldCheck, text: t('trustedRls') },
     { icon: UserRoundCheck, text: t('trustedNoAdvice') },
   ];

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
@@ -125,21 +125,25 @@ export default function CalendarPage() {
   const [bookDate, setBookDate] = useState<Date | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(focusAppointmentId);
 
-  useEffect(() => {
-    if (!focusAppointmentId || !appointmentsQuery.data) return;
+  const [prevFocusedApptId, setPrevFocusedApptId] = useState<string | null>(null);
+  if (focusAppointmentId && focusAppointmentId !== prevFocusedApptId && appointmentsQuery.data) {
     const hit = appointmentsQuery.data.find((a) => a.id === focusAppointmentId);
-    if (!hit) return;
-    setSelectedId(hit.id);
-    const start = new Date(hit.startsAt);
-    setMonthStart(new Date(start.getFullYear(), start.getMonth(), 1));
-  }, [focusAppointmentId, appointmentsQuery.data]);
+    if (hit) {
+      setPrevFocusedApptId(focusAppointmentId);
+      setSelectedId(hit.id);
+      const start = new Date(hit.startsAt);
+      setMonthStart(new Date(start.getFullYear(), start.getMonth(), 1));
+    }
+  }
 
-  useEffect(() => {
-    if (!focusDateParam || focusAppointmentId) return;
+  const [prevFocusDate, setPrevFocusDate] = useState<string | null>(null);
+  if (focusDateParam && !focusAppointmentId && focusDateParam !== prevFocusDate) {
     const seed = new Date(focusDateParam);
-    if (Number.isNaN(seed.getTime())) return;
-    setMonthStart(new Date(seed.getFullYear(), seed.getMonth(), 1));
-  }, [focusDateParam, focusAppointmentId]);
+    if (!Number.isNaN(seed.getTime())) {
+      setPrevFocusDate(focusDateParam);
+      setMonthStart(new Date(seed.getFullYear(), seed.getMonth(), 1));
+    }
+  }
 
   const selected = appointmentsQuery.data?.find((a) => a.id === selectedId) ?? null;
 

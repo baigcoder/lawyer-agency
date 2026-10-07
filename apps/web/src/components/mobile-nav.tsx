@@ -13,6 +13,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { InboxUnreadBadge } from '@/components/inbox/inbox-unread-badge';
+import { EscalationBadge } from '@/components/escalations/escalation-badge';
 import { LanguageToggle } from '@/components/language-toggle';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { UserMenu } from '@/components/user-menu';
@@ -79,6 +80,7 @@ export function MobileNav({ className }: { className?: string }) {
                     <item.icon className={cn('h-4 w-4 shrink-0', active && 'text-primary')} aria-hidden />
                     <span className={cn('flex-1', dir === 'rtl' && 'font-urdu')}>{t(item.key)}</span>
                     {item.href === '/dashboard/inbox' ? <InboxUnreadBadge /> : null}
+                    {item.href === '/dashboard/escalations' ? <EscalationBadge /> : null}
                   </Link>
                 </li>
               );

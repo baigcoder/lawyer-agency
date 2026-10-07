@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Menu, Scale, X } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
+import { WakeelMonogram } from '@/components/wakeel-monogram';
 import { LanguageToggle } from '@/components/language-toggle';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
@@ -62,9 +63,7 @@ export function MarketingHeader() {
     <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
         <Link href="/" className="flex shrink-0 items-center gap-2.5 rounded-lg">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
-            <Scale className="h-4.5 w-4.5 text-primary" aria-hidden />
-          </span>
+          <WakeelMonogram className="h-8 w-8" />
           <span className="text-lg font-bold tracking-tight">Wakeel</span>
         </Link>
 

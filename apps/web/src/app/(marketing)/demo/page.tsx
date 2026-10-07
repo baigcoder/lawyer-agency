@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -16,13 +15,13 @@ import {
   LayoutDashboard,
   ListChecks,
   MessageCircleMore,
-  Scale,
   Settings,
   Smartphone,
   Sparkles,
   Users,
   Wallet,
 } from 'lucide-react';
+import { WakeelMonogram } from '@/components/wakeel-monogram';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { LanguageToggle } from '@/components/language-toggle';
 import { MarketingFooter } from '@/components/marketing-footer';
@@ -126,9 +125,7 @@ export default function DemoDashboardPage() {
       <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
           <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
-              <Scale className="h-4 w-4 text-primary" aria-hidden />
-            </div>
+            <WakeelMonogram className="h-8 w-8" />
             <span className="text-lg font-bold tracking-tight">Wakeel</span>
           </Link>
           <div className="flex items-center gap-2">
@@ -187,9 +184,7 @@ function DemoSidebar() {
   return (
     <aside className="sticky top-24 hidden h-fit flex-col rounded-2xl bg-card ring-1 ring-foreground/5 shadow-sm lg:flex">
       <div className="flex h-14 items-center gap-2 border-b border-border px-4">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
-          <Scale className="h-4 w-4 text-primary" aria-hidden />
-        </div>
+        <WakeelMonogram className="h-8 w-8" />
         <div>
           <p className="text-sm font-bold tracking-tight">Al-Madad Law</p>
           <p className="text-xs text-muted-foreground">Demo workspace</p>

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { CalendarDays, Gavel, MapPin } from 'lucide-react';
+import { CalendarDays, Landmark, MapPin } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -103,7 +103,7 @@ export function TodaySchedule({
               </div>
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-1.5 truncate font-medium">
-                  <Gavel className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                  <Landmark className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
                   {item.hearing.courtName}
                 </p>
                 <p className="truncate text-xs text-muted-foreground">

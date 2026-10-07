@@ -2,72 +2,149 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import {
+  AlertTriangle,
+  BarChart3,
+  BookOpen,
+  CalendarDays,
+  FileText,
+  FolderOpen,
+  Inbox,
+  LayoutDashboard,
+  MessageCircleMore,
+  Settings,
+  Users,
+  Wallet,
+  type LucideIcon,
+} from 'lucide-react';
 import { InboxUnreadBadge } from '@/components/inbox/inbox-unread-badge';
+import { EscalationBadge } from '@/components/escalations/escalation-badge';
 import { useLanguage } from '@/lib/language';
-import { dashboardNavSections } from '@/lib/dashboard-nav';
 import { hasAnyPermission, hasPermission } from '@/lib/permissions';
 import { useSession } from '@/lib/session';
 import { cn } from '@/lib/utils';
+import type { TranslationKey } from '@/lib/translations';
+
+interface NavItem {
+  href: string;
+  key: TranslationKey;
+  icon: LucideIcon;
+  badge?: 'inbox' | 'escalations';
+  permission?: string;
+  anyOf?: string[];
+}
+
+interface NavGroup {
+  labelEn: string;
+  labelUr: string;
+  items: NavItem[];
+}
+
+const navGroups: NavGroup[] = [
+  {
+    labelEn: 'Operations',
+    labelUr: 'مرکزی کارروائی',
+    items: [
+      { href: '/dashboard', key: 'overview', icon: LayoutDashboard, permission: 'firm-profile:read' },
+      { href: '/dashboard/inbox', key: 'inbox', icon: Inbox, badge: 'inbox', permission: 'inbox:read' },
+      { href: '/dashboard/escalations', key: 'escalations', icon: AlertTriangle, badge: 'escalations', permission: 'inbox:read' },
+    ],
+  },
+  {
+    labelEn: 'Legal Work',
+    labelUr: 'قانونی امور',
+    items: [
+      { href: '/dashboard/cases', key: 'cases', icon: FolderOpen, permission: 'cases:read' },
+      { href: '/dashboard/calendar', key: 'calendar', icon: CalendarDays, permission: 'appointments:read' },
+      { href: '/dashboard/documents', key: 'documents', icon: FileText, permission: 'cases:write' },
+      { href: '/dashboard/knowledge', key: 'knowledge', icon: BookOpen, permission: 'knowledge-base:read' },
+    ],
+  },
+  {
+    labelEn: 'Channels & Finance',
+    labelUr: 'رابطے و فیس',
+    items: [
+      { href: '/dashboard/whatsapp', key: 'whatsapp', icon: MessageCircleMore, permission: 'whatsapp:read' },
+      { href: '/dashboard/payments', key: 'payments', icon: Wallet, permission: 'payments:read' },
+      { href: '/dashboard/analytics', key: 'analytics', icon: BarChart3, permission: 'analytics:read' },
+    ],
+  },
+  {
+    labelEn: 'Chamber Admin',
+    labelUr: 'انتظامی امور',
+    items: [
+      { href: '/dashboard/team', key: 'team', icon: Users, permission: 'users:read' },
+      {
+        href: '/dashboard/settings',
+        key: 'settings',
+        icon: Settings,
+        anyOf: ['users:manage', 'lawyers:write', 'notifications:write'],
+      },
+    ],
+  },
+];
 
 export function DashboardNav() {
   const pathname = usePathname();
-  const { t, dir } = useLanguage();
+  const { t, dir, language } = useLanguage();
   const { session } = useSession();
   const permissions = session?.permissions;
 
   return (
-    <nav aria-label="Dashboard" className="flex-1 overflow-y-auto px-2 py-3">
-      {dashboardNavSections.map((section) => {
-        const items = section.items.filter((item) =>
+    <nav aria-label="Main Navigation" className="flex-1 overflow-y-auto px-2.5 py-2 space-y-4">
+      {navGroups.map((group, gIdx) => {
+        const visibleItems = group.items.filter((item) =>
           item.anyOf
             ? hasAnyPermission(permissions, item.anyOf)
             : item.permission
               ? hasPermission(permissions, item.permission)
               : true,
         );
-        if (items.length === 0) return null;
+
+        if (visibleItems.length === 0) return null;
+
         return (
-          <div key={section.key} className="mb-4">
-            <p
+          <div key={gIdx} className="space-y-1">
+            <h2
               className={cn(
-                'mb-1 px-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70',
-                dir === 'rtl' && 'font-urdu normal-case tracking-normal',
+                'px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 select-none',
+                dir === 'rtl' && 'font-urdu tracking-normal text-end',
               )}
             >
-              {t(section.key)}
-            </p>
-            <ul className="flex flex-col gap-0.5">
-              {items.map((item) => {
+              {language === 'ur' ? group.labelUr : group.labelEn}
+            </h2>
+            <ul className="space-y-0.5">
+              {visibleItems.map((item) => {
+                const Icon = item.icon;
                 const active =
                   pathname === item.href ||
                   (item.href !== '/dashboard' && pathname.startsWith(`${item.href}/`));
+
                 return (
                   <li key={item.href}>
                     <Link
                       href={item.href}
                       aria-current={active ? 'page' : undefined}
                       className={cn(
-                        'group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                        'group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all duration-150',
+                        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                         active
-                          ? 'bg-accent font-medium text-accent-foreground'
-                          : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+                          ? 'bg-accent text-accent-foreground shadow-xs font-semibold'
+                          : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground',
                       )}
                     >
-                      {active && (
-                        <span
-                          aria-hidden
-                          className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-primary"
-                        />
-                      )}
-                      <item.icon
-                        className={cn('h-4 w-4 shrink-0', active && 'text-primary')}
+                      <Icon
+                        className={cn(
+                          'h-4 w-4 shrink-0 transition-colors',
+                          active ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground',
+                        )}
                         aria-hidden
                       />
-                      <span className={cn('flex-1', dir === 'rtl' && 'font-urdu text-right')}>
+                      <span className={cn('flex-1 truncate', dir === 'rtl' && 'font-urdu text-end')}>
                         {t(item.key)}
                       </span>
-                      {item.href === '/dashboard/inbox' ? <InboxUnreadBadge /> : null}
+                      {item.badge === 'inbox' ? <InboxUnreadBadge /> : null}
+                      {item.badge === 'escalations' ? <EscalationBadge /> : null}
                     </Link>
                   </li>
                 );

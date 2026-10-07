@@ -28,6 +28,7 @@ import { EvolutionOutboundSender } from './application/evolution-outbound-sender
 import { SendService } from './application/send.service';
 import { MediaReadService } from './application/media-read.service';
 import { EvolutionApiClient } from './infrastructure/evolution-api.client';
+export { EvolutionApiClient };
 import { WhatsappCallingAdapter } from './infrastructure/whatsapp-calling.adapter';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../../config/env';

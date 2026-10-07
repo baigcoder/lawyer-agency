@@ -1,10 +1,10 @@
 import {
   ArrowLeft,
+  Building2,
   CheckCheck,
   LockKeyhole,
   MoreVertical,
   Phone,
-  Scale,
   Video,
 } from 'lucide-react';
 
@@ -61,7 +61,7 @@ export function WhatsappPhoneMockup() {
         <div className="flex items-center gap-1.5 bg-[#202c33] px-2 pb-2.5 pt-1 text-[#e9edef]">
           <ArrowLeft className="h-4 w-4 shrink-0" />
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white">
-            <Scale className="h-4 w-4" />
+            <Building2 className="h-4 w-4" />
           </span>
           <div className="min-w-0 flex-1">
             <p className="truncate text-[12px] font-medium">Al-Madad Law Associates</p>
