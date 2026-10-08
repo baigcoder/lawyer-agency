@@ -250,7 +250,7 @@ export function MatterFrame({ className }: { className?: string }) {
             <Bubble from="client" time="23:43">{m.thread.c2}</Bubble>
           </Reveal>
           {/* Overlays the thread's tail instead of reserving height, so the hero frame stays compact. */}
-          <Reveal on={on(7)} fresh={fresh(7)} className="sm:absolute sm:inset-x-0 sm:bottom-0 sm:z-10 sm:rounded-none sm:bg-gradient-to-t sm:from-sunken sm:from-75% sm:to-transparent sm:px-3 sm:pb-3 sm:pt-10">
+          <Reveal on={on(7)} fresh={fresh(7)} className="absolute inset-x-0 bottom-0 z-10 rounded-none bg-gradient-to-t from-sunken from-75% to-transparent px-3 pb-3 pt-10">
             <ApprovalGate demo emphasize={step === LAST && running} meta={t('mfToClient')} className="bg-card shadow-[var(--shadow-frame)]">
               <span dir="ltr" className="block text-start">{m.thread.draft}</span>
             </ApprovalGate>
