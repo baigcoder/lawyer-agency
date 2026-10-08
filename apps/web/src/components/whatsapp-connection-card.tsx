@@ -147,7 +147,19 @@ export function WhatsappConnectionCard() {
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
-        {!canManage && !isConnected ? (
+        {status.isError && !ready ? (
+          // The status call failed (Evolution down or unreachable). Offering
+          // "Connect" here only produced a second, more confusing error.
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Can&apos;t reach the WhatsApp service right now, so the connection status is unknown. Clients may still be
+              connected; try again in a moment.
+            </p>
+            <Button type="button" variant="outline" size="sm" onClick={() => void status.refetch()} disabled={status.isFetching}>
+              <RefreshCw className={`mr-1.5 h-4 w-4 ${status.isFetching ? 'animate-spin' : ''}`} /> Try again
+            </Button>
+          </div>
+        ) : !canManage && !isConnected ? (
           <p className="text-sm text-muted-foreground">{t('askOwnerToConnectWhatsapp')}</p>
         ) : !ready || ready.status === 'disconnected' ? (
           <div className="space-y-4">

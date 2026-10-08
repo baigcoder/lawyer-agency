@@ -10,6 +10,7 @@ import {
   type WhatsappConnectionRepository,
 } from './ports';
 import { EvolutionQrStore } from './evolution-qr.store';
+import { ResourceLockService } from '../../../common/locks/resource-lock.service';
 
 export interface WhatsappConnectionStatus {
   instanceName: string;
@@ -29,6 +30,12 @@ export class EvolutionConnectionService {
   private readonly webhooksEnsured = new Set<string>();
   /** Evolution reconnects Baileys whenever settings include wavoipToken — apply once. */
   private readonly wavoipSettingsEnsured = new Set<string>();
+  /**
+   * connect() wipes the instance before starting a handshake, so a double
+   * click or a second tab used to delete the session the first one was
+   * scanning. Concurrent calls for a tenant now share one attempt.
+   */
+  private readonly connectsInFlight = new Map<string, Promise<WhatsappConnectionStatus>>();
 
   constructor(
     private readonly config: ConfigService<Env, true>,
@@ -36,6 +43,7 @@ export class EvolutionConnectionService {
     private readonly evolution: EvolutionApiClient,
     private readonly qrStore: EvolutionQrStore,
     @Inject(WHATSAPP_CONNECTION_REPOSITORY) private readonly connections: WhatsappConnectionRepository,
+    private readonly locks: ResourceLockService,
   ) {}
 
   async getStatus(tenantId: string, options?: { refreshQr?: boolean }): Promise<WhatsappConnectionStatus> {
@@ -88,11 +96,17 @@ export class EvolutionConnectionService {
       // QR rotations arrive via the QRCODE_UPDATED webhook (Evolution owns
       // the rotation). We only bootstrap the handshake — calling connect on
       // every poll would restart Baileys and kill in-flight scans.
-      let qrCode = this.qrStore.get(connection.instanceName);
-      if (live.status === 'connecting' && (options?.refreshQr || qrCode === null)) {
+      // A missing or expired QR is re-fetched — but never while connect() is
+      // still setting the instance up, which would restart its handshake.
+      let qrCode = await this.qrStore.get(connection.instanceName);
+      if (
+        live.status === 'connecting' &&
+        !this.connectsInFlight.has(tenantId) &&
+        (options?.refreshQr || qrCode === null)
+      ) {
         const refreshed = await this.evolution.connectInstance(connection.instanceName);
         qrCode = refreshed.qrCode ?? null;
-        if (qrCode) this.qrStore.set(connection.instanceName, qrCode);
+        if (qrCode) await this.qrStore.set(connection.instanceName, qrCode);
       }
 
       return {
@@ -109,6 +123,35 @@ export class EvolutionConnectionService {
   async connect(
     tenantId: string,
     connectionType: EvolutionConnectionType = 'baileys',
+  ): Promise<WhatsappConnectionStatus> {
+    const inFlight = this.connectsInFlight.get(tenantId);
+    if (inFlight) return inFlight;
+    const attempt = this.connectAcrossReplicas(tenantId, connectionType).finally(() =>
+      this.connectsInFlight.delete(tenantId),
+    );
+    this.connectsInFlight.set(tenantId, attempt);
+    return attempt;
+  }
+
+  /**
+   * The in-process map covers one api; this lock covers two tabs whose
+   * requests land on different replicas. The loser reports the winner's
+   * progress instead of wiping the instance it is pairing.
+   */
+  private async connectAcrossReplicas(
+    tenantId: string,
+    connectionType: EvolutionConnectionType,
+  ): Promise<WhatsappConnectionStatus> {
+    // Long enough for the slowest path: reset + create + webhook + connect.
+    const outcome = await this.locks.withLock(`whatsapp-connect:${tenantId}`, 120_000, () =>
+      this.startConnect(tenantId, connectionType),
+    );
+    return outcome.acquired ? outcome.result : this.getStatus(tenantId);
+  }
+
+  private async startConnect(
+    tenantId: string,
+    connectionType: EvolutionConnectionType,
   ): Promise<WhatsappConnectionStatus> {
     return this.uow.withTenant(tenantId, async (tx) => {
       const instanceName = this.defaultInstanceName(tenantId);
@@ -138,7 +181,7 @@ export class EvolutionConnectionService {
       // handshake — reusing a broken session leaves the dashboard stuck on
       // "connecting" and outbound sends fail silently.
       await this.evolution.resetInstance(instanceName);
-      this.qrStore.clear(instanceName);
+      await this.qrStore.clear(instanceName);
 
       await this.connections.upsert(tx, tenantId, {
         instanceName,
@@ -169,7 +212,7 @@ export class EvolutionConnectionService {
         displayName: live.displayName ?? null,
       });
       if (live.qrCode) {
-        this.qrStore.set(instanceName, live.qrCode);
+        await this.qrStore.set(instanceName, live.qrCode);
       }
 
       return {
@@ -195,7 +238,7 @@ export class EvolutionConnectionService {
         // Instance may already be gone; local row is still removed below.
       }
 
-      this.qrStore.clear(instanceName);
+      await this.qrStore.clear(instanceName);
       this.webhooksEnsured.delete(instanceName);
       this.wavoipSettingsEnsured.delete(instanceName);
       if (connection) {
