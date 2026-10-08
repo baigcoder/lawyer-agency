@@ -63,3 +63,10 @@ export function initialsOf(name: string | null): string {
   const parts = name.trim().split(/\s+/);
   return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || name.slice(0, 2);
 }
+
+/** Label for a free-form fact key: short acronyms (fir, cnic, ps) stay upper-case. */
+export function factLabel(key: string): string {
+  const k = key.trim();
+  if (k.length <= 4 && !/\s/.test(k)) return k.toUpperCase();
+  return k.charAt(0).toUpperCase() + k.slice(1);
+}

@@ -1,24 +1,5 @@
 import type { InboxMessage } from '@/lib/schemas/inbox';
 
-const AVATAR_COLORS = [
-  '#00a884',
-  '#53bdeb',
-  '#a855f7',
-  '#f59e0b',
-  '#ef4444',
-  '#06b6d4',
-  '#ec4899',
-  '#14b8a6',
-] as const;
-
-export function waAvatarColor(seed: string): string {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i += 1) {
-    hash = (hash * 31 + seed.charCodeAt(i)) | 0;
-  }
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length] ?? AVATAR_COLORS[0];
-}
-
 export function waInitials(name: string | null, phone: string): string {
   if (name) {
     const parts = name.trim().split(/\s+/).slice(0, 2);

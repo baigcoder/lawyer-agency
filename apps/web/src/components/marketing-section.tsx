@@ -2,11 +2,10 @@ import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 /**
- * Shared section shell for the marketing pages. Replaces the
- * `mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28` string that was repeated at
- * every landing section, and owns two things those copies kept getting wrong:
- * `scroll-mt-*` (so an anchored heading is not hidden under the sticky header)
- * and the muted band treatment used to separate adjacent sections.
+ * Shared section shell for the marketing pages. Owns the measure, vertical
+ * rhythm, `scroll-mt-*` (anchored headings clear the sticky header) and the
+ * three section tones: paper (default), sunken band, and the dark chambers
+ * stage used for immersive product moments.
  */
 export function Section({
   id,
@@ -15,29 +14,33 @@ export function Section({
   className,
   innerClassName,
   children,
+  labelledBy,
 }: {
   id?: string;
-  tone?: 'default' | 'muted';
+  tone?: 'default' | 'muted' | 'stage';
   size?: 'default' | 'sm' | 'lg';
   className?: string;
   innerClassName?: string;
   children: ReactNode;
+  labelledBy?: string;
 }) {
   return (
     <section
       id={id}
+      aria-labelledby={labelledBy}
       className={cn(
         'scroll-mt-16',
-        tone === 'muted' && 'border-y border-border bg-muted/30',
+        tone === 'muted' && 'border-y border-border bg-sunken',
+        tone === 'stage' && 'chambers-stage dark text-foreground',
         className,
       )}
     >
       <div
         className={cn(
-          'mx-auto max-w-6xl px-4 sm:px-6',
-          size === 'sm' && 'py-10 sm:py-12',
-          size === 'default' && 'py-16 sm:py-24',
-          size === 'lg' && 'py-16 sm:py-24 lg:py-28',
+          'mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-8',
+          size === 'sm' && 'py-12 sm:py-14',
+          size === 'default' && 'py-20 sm:py-28',
+          size === 'lg' && 'py-24 sm:py-32',
           innerClassName,
         )}
       >
@@ -48,48 +51,52 @@ export function Section({
 }
 
 /**
- * Eyebrow + heading + optional lede. Every landing section repeated this
- * three-element pattern with slightly different spacing each time.
+ * Act label + editorial heading + optional lede. `index` renders the act
+ * number in the docket ("02 · Matter formation").
  *
- * `urdu` swaps in the Nastaliq face. Display sizes need an explicit
- * `leading-*` because `.font-urdu` sets `line-height: 2.1` (globals.css), which
- * is right for body copy but far too loose for a 36px heading.
+ * Urdu never takes the display serif: Nastaliq display sizes need explicit
+ * leading because `.font-urdu` sets 2.2 for body copy.
  */
 export function SectionHeading({
+  id,
+  index,
   eyebrow,
   title,
   lede,
   urdu,
+  align = 'start',
   className,
 }: {
+  id?: string;
+  index?: string;
   eyebrow?: string;
-  title: string;
+  title: ReactNode;
   lede?: string;
   urdu?: boolean;
+  align?: 'start' | 'center';
   className?: string;
 }) {
   return (
-    <div className={cn('max-w-2xl', className)}>
+    <div className={cn('max-w-2xl', align === 'center' && 'mx-auto text-center', className)}>
       {eyebrow ? (
-        <p
-          className={cn(
-            'text-xs font-semibold uppercase tracking-[0.16em] text-primary',
-            urdu && 'font-urdu tracking-normal',
-          )}
-        >
+        <p className="docket text-primary">
+          {index ? <span className="text-muted-foreground">{index} · </span> : null}
           {eyebrow}
         </p>
       ) : null}
       <h2
+        id={id}
         className={cn(
-          'mt-3 text-3xl font-bold tracking-tight sm:text-4xl',
-          urdu && 'font-urdu leading-[1.55] tracking-normal',
+          'mt-4 text-balance',
+          urdu
+            ? 'font-urdu text-3xl leading-[1.75] sm:text-4xl sm:leading-[1.75]'
+            : 'font-display text-[2.5rem] leading-[1.05] sm:text-[3.25rem]',
         )}
       >
         {title}
       </h2>
       {lede ? (
-        <p className={cn('mt-4 text-lg leading-8 text-muted-foreground', urdu && 'font-urdu')}>
+        <p className={cn('mt-5 text-pretty text-[1.0625rem] leading-8 text-muted-foreground', urdu && 'font-urdu')}>
           {lede}
         </p>
       ) : null}

@@ -36,7 +36,7 @@ export function HeaderWhatsappStatus() {
         className="hidden h-8 max-w-[12rem] gap-1.5 truncate sm:inline-flex"
         render={<Link href="/dashboard/whatsapp" />}
       >
-        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${connected ? 'bg-emerald-500' : 'bg-muted-foreground'}`} aria-hidden />
+        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${connected ? 'bg-primary' : 'bg-muted-foreground'}`} aria-hidden />
         {connected ? (number ?? t('whatsappConnected')) : t('whatsappNotConnected')}
       </Badge>
     );

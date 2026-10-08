@@ -27,12 +27,13 @@ export function MarketingHeader() {
   const [open, setOpen] = useState(false);
   const urdu = dir === 'rtl';
 
+  // Anchors are absolute (`/#…`) so they also work from /demo and the policy pages.
   const links = [
-    { href: '#product', label: t('whatIsWakeel') },
-    { href: '#how-it-works', label: t('howItWorks') },
-    { href: '#features', label: t('features') },
-    { href: '#voice', label: t('overviewAiVoice') },
-    { href: '#security', label: t('security') },
+    { href: '/#formation', label: t('navFormation') },
+    { href: '/#handoff', label: t('navHandoff') },
+    { href: '/#control', label: t('navControl') },
+    { href: '/#security', label: t('security') },
+    { href: '/demo', label: t('demo') },
   ];
 
   // Escape closes and returns focus to the trigger.
@@ -60,14 +61,17 @@ export function MarketingHeader() {
   }, []);
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
-        <Link href="/" className="flex shrink-0 items-center gap-2.5 rounded-lg">
-          <WakeelMonogram className="h-8 w-8" />
-          <span className="text-lg font-bold tracking-tight">Wakeel</span>
+    <header className="sticky top-0 z-50 border-b border-border bg-background/85 backdrop-blur-md supports-[backdrop-filter]:bg-background/70">
+      <div className="mx-auto flex h-16 max-w-[1320px] items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+        <Link href="/" className="flex shrink-0 items-center gap-2.5 rounded-lg" aria-label="Wakeel — home">
+          <WakeelMonogram className="h-7 w-7" />
+          <span className="text-[1.05rem] font-semibold tracking-[-0.02em]">Wakeel</span>
+          <span className="hidden font-urdu text-sm leading-none text-muted-foreground sm:inline" lang="ur">
+            وکیل
+          </span>
         </Link>
 
-        <nav aria-label="Main" className="hidden items-center gap-7 lg:flex">
+        <nav aria-label="Main" className="hidden items-center gap-6 lg:flex">
           {links.map((link) => (
             <a
               key={link.href}
@@ -126,7 +130,7 @@ export function MarketingHeader() {
         hidden={!open}
         className="border-t border-border bg-background lg:hidden"
       >
-        <nav aria-label="Mobile" className="mx-auto max-w-6xl px-4 py-3 sm:px-6">
+        <nav aria-label="Mobile" className="mx-auto max-w-[1320px] px-4 py-3 sm:px-6">
           <ul className="flex flex-col">
             {links.map((link) => (
               <li key={link.href}>

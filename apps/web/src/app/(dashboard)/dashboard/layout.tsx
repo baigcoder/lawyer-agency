@@ -1,153 +1,152 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { Search, ChevronRight } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { useLanguage } from '@/lib/language';
 import { cn } from '@/lib/utils';
 import { clerkEnabled } from '@/lib/env';
-import { DashboardNav } from '@/components/dashboard-nav';
+import { apiRequest } from '@/lib/api-client';
+import { dashboardNavSections, viewForPath, type DashboardNavSection } from '@/lib/dashboard-nav';
+import { hasAnyPermission, hasPermission } from '@/lib/permissions';
+import { firmProfileReadSchema } from '@/lib/schemas/firm-profile';
 import { InboxAlertWatcher } from '@/components/inbox/inbox-alert-watcher';
+import { InboxUnreadBadge } from '@/components/inbox/inbox-unread-badge';
+import { EscalationBadge } from '@/components/escalations/escalation-badge';
 import { HeaderWhatsappStatus } from '@/components/header-whatsapp-status';
-import { MobileNav } from '@/components/mobile-nav';
 import { LanguageToggle } from '@/components/language-toggle';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { UserMenu } from '@/components/user-menu';
 import { CommandMenu } from '@/components/command-menu';
 import { WakeelMonogram } from '@/components/wakeel-monogram';
+import { AppSidebar } from '@/components/shell/app-sidebar';
+import { MobileTabBar } from '@/components/shell/mobile-tab-bar';
+import { Signal } from '@/components/signal';
 import { ProvisioningGuard } from './provisioning-guard';
 import { RouteGuard } from '@/components/route-guard';
 import { SessionGate } from '@/components/session-gate';
 import { SessionProvider, useSession } from '@/lib/session';
 
-function SidebarHeader() {
-  const { t, dir } = useLanguage();
+const badges = { inbox: <InboxUnreadBadge />, escalations: <EscalationBadge /> };
+
+function openCommandMenu() {
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, metaKey: true }));
+}
+
+/** Navigation filtered to what this role may open (also enforced server-side). */
+function useVisibleSections(): DashboardNavSection[] {
   const { session } = useSession();
-  const roleName = session?.role ?? 'Advocate';
+  const permissions = session?.permissions;
+  return dashboardNavSections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) =>
+        item.anyOf
+          ? hasAnyPermission(permissions, item.anyOf)
+          : item.permission
+            ? hasPermission(permissions, item.permission)
+            : true,
+      ),
+    }))
+    .filter((section) => section.items.length > 0);
+}
+
+function Shell({ children }: { children: React.ReactNode }) {
+  const { t, dir } = useLanguage();
+  const pathname = usePathname();
+  const { session } = useSession();
+  const sections = useVisibleSections();
+  const view = viewForPath(pathname);
+  const inboxMode = pathname === '/dashboard/inbox';
+  const profile = useQuery({
+    queryKey: ['firm-profile'],
+    queryFn: () => apiRequest('/v1/firm-profile', { schema: firmProfileReadSchema }),
+    retry: false,
+  });
+  const firmName = profile.data?.displayName ?? profile.data?.firmName ?? t('yourFirm');
+  const roleKey = session?.role === 'Owner' ? 'roleOwner' : session?.role === 'Lawyer' ? 'roleLawyer' : 'roleStaff';
 
   return (
-    <div className="flex flex-col gap-2 border-b border-sidebar-border px-3.5 py-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg shadow-xs ring-1 ring-border/40">
-            <WakeelMonogram className="h-6 w-6" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm font-bold tracking-tight text-foreground truncate">Wakeel</span>
-              <span className="inline-flex items-center rounded px-1 text-[10px] font-medium bg-primary/10 text-primary">
-                PRO
-              </span>
+    <div className={cn('flex min-h-svh bg-background', inboxMode && 'h-svh overflow-hidden')} dir={dir}>
+      <InboxAlertWatcher />
+      <CommandMenu />
+
+      <AppSidebar
+        className="sticky top-0 hidden h-svh lg:flex"
+        sections={sections}
+        active={view}
+        firmName={firmName}
+        subtitle={session ? `${session.name.split(/\s+/)[0]} · ${t(roleKey)}` : undefined}
+        badges={badges}
+        onSearch={openCommandMenu}
+        footer={
+          <div className="flex items-center justify-between gap-2">
+            <Signal level="ok">RLS · {t('setEnforced')}</Signal>
+            <div className="flex items-center gap-0.5">
+              <LanguageToggle />
+              <ThemeToggle />
             </div>
-            <p className={cn('text-[11px] text-muted-foreground truncate', dir === 'rtl' && 'font-urdu')}>
-              {roleName} · {t('dashboard')}
-            </p>
           </div>
-        </div>
+        }
+      />
+
+      <div className={cn('flex min-w-0 flex-1 flex-col', inboxMode && 'h-svh min-h-0 overflow-hidden')}>
+        {inboxMode ? null : (
+          <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/88 px-4 backdrop-blur-md sm:px-6">
+            <div className="flex min-w-0 items-center gap-2.5 lg:hidden">
+              <WakeelMonogram className="h-7 w-7" />
+              <span className="truncate text-sm font-semibold">{firmName}</span>
+            </div>
+            <nav aria-label="Breadcrumb" className="hidden min-w-0 items-center gap-2 lg:flex">
+              <span className="docket truncate text-muted-foreground">{firmName}</span>
+              <span className="text-muted-foreground/50" aria-hidden>/</span>
+              <span className={cn('truncate text-[13px] font-medium', dir === 'rtl' && 'font-urdu')}>{t(view)}</span>
+            </nav>
+            <div className="ms-auto flex items-center gap-1.5">
+              <HeaderWhatsappStatus />
+              <span className="lg:hidden">
+                <LanguageToggle />
+              </span>
+              <span className="lg:hidden">
+                <ThemeToggle />
+              </span>
+              <UserMenu />
+            </div>
+          </header>
+        )}
+        <main
+          id="main"
+          className={cn(
+            'flex-1',
+            inboxMode ? 'flex min-h-0 flex-col overflow-hidden max-lg:pb-14' : 'px-4 pb-24 pt-6 sm:px-6 lg:px-8 lg:pb-10 lg:pt-8',
+          )}
+        >
+          <div className={cn(inboxMode ? 'flex min-h-0 flex-1 flex-col' : 'app-enter mx-auto w-full max-w-[1440px]')} key={inboxMode ? undefined : pathname}>
+            <RouteGuard>{children}</RouteGuard>
+          </div>
+        </main>
       </div>
 
-      <button
-        type="button"
-        onClick={() => {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }));
-        }}
-        className="flex w-full items-center justify-between gap-2 rounded-lg border border-border/80 bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground shadow-2xs transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      >
-        <span className="flex items-center gap-2 truncate">
-          <Search className="h-3.5 w-3.5 shrink-0 opacity-70" />
-          <span className="truncate">Quick jump...</span>
-        </span>
-        <kbd className="hidden sm:inline-flex items-center rounded border border-border/80 bg-background/80 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground shadow-2xs">
-          ⌘K
-        </kbd>
-      </button>
+      <MobileTabBar
+        sections={sections}
+        active={view}
+        badges={badges}
+        sheetFooter={
+          <div className="flex items-center gap-2">
+            <LanguageToggle />
+            <ThemeToggle />
+            <UserMenu />
+          </div>
+        }
+      />
     </div>
   );
 }
 
-function TopBarBreadcrumbs() {
-  const pathname = usePathname();
-
-  const segments = pathname.split('/').filter(Boolean);
-  const currentSection = segments[1] ?? 'overview';
-  const sectionTitle = currentSection.charAt(0).toUpperCase() + currentSection.slice(1);
-
-  return (
-    <nav aria-label="Breadcrumb" className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground">
-      <span className="font-medium text-muted-foreground/80">Chamber</span>
-      <ChevronRight className="h-3.5 w-3.5 opacity-40 shrink-0" />
-      <span className="font-semibold text-foreground">
-        {sectionTitle}
-      </span>
-    </nav>
-  );
-}
-
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { dir } = useLanguage();
-  const pathname = usePathname();
-  const inboxMode = pathname === '/dashboard/inbox';
-
   const chrome = (
     <SessionProvider>
       <SessionGate>
-        <div className={cn('flex min-h-svh bg-background', inboxMode && 'h-svh overflow-hidden')} dir={dir}>
-          <InboxAlertWatcher />
-          <CommandMenu />
-
-          <aside className="sticky top-0 hidden h-svh w-64 shrink-0 flex-col border-e border-sidebar-border bg-sidebar lg:flex">
-            <SidebarHeader />
-            <DashboardNav />
-            <div className="mt-auto border-t border-sidebar-border p-2.5 bg-sidebar/50">
-              <div className="flex items-center justify-between gap-2 px-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="text-[11px] font-medium text-muted-foreground">Live Telemetry</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <LanguageToggle />
-                  <ThemeToggle />
-                </div>
-              </div>
-            </div>
-          </aside>
-
-          <div
-            className={cn(
-              'flex min-w-0 flex-1 flex-col',
-              inboxMode && 'h-svh min-h-0 overflow-hidden',
-            )}
-          >
-            {inboxMode ? null : (
-              <header className="sticky top-0 z-40 flex h-14 items-center justify-between gap-3 border-b border-border bg-background/85 px-4 backdrop-blur-md supports-[backdrop-filter]:bg-background/65">
-                <div className="flex items-center gap-3 min-w-0">
-                  <MobileNav />
-                  <TopBarBreadcrumbs />
-                </div>
-                <div className="flex items-center gap-2">
-                  <HeaderWhatsappStatus />
-                  <LanguageToggle />
-                  <ThemeToggle />
-                  <UserMenu />
-                </div>
-              </header>
-            )}
-            <main
-              id="main"
-              className={cn(
-                'flex-1',
-                inboxMode ? 'flex min-h-0 flex-col overflow-hidden' : 'px-4 py-5 sm:px-6 lg:px-8',
-              )}
-            >
-              <div
-                className={cn(
-                  inboxMode ? 'flex min-h-0 flex-1 flex-col' : 'mx-auto w-full max-w-[1440px]',
-                )}
-              >
-                <RouteGuard>{children}</RouteGuard>
-              </div>
-            </main>
-          </div>
-        </div>
+        <Shell>{children}</Shell>
       </SessionGate>
     </SessionProvider>
   );

@@ -1,7 +1,37 @@
-import { AlertTriangle, ArrowRight, FileText, HelpCircle, ListFilter, Quote } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import type { HandoffBrief } from '@/lib/schemas/escalations';
+'use client';
 
+import type { ReactNode } from 'react';
+import { ArrowRight } from 'lucide-react';
+import { Signal, type SignalLevel } from '@/components/signal';
+import { factLabel } from '@/lib/format';
+import { useLanguage } from '@/lib/language';
+import type { HandoffBrief } from '@/lib/schemas/escalations';
+import type { TranslationKey } from '@/lib/translations';
+import { cn } from '@/lib/utils';
+
+const docStatus: Record<string, { key: TranslationKey; level: SignalLevel }> = {
+  PENDING: { key: 'mfRequested', level: 'attention' },
+  REQUESTED: { key: 'mfRequested', level: 'attention' },
+  FULFILLED: { key: 'briefReceived', level: 'ok' },
+  RECEIVED: { key: 'briefReceived', level: 'ok' },
+  VERIFIED: { key: 'briefVerified', level: 'ok' },
+  CANCELLED: { key: 'briefCancelled', level: 'info' },
+};
+
+function Block({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
+  return (
+    <section className={cn('border-t border-border pt-3', className)}>
+      <h4 className="docket mb-2 text-muted-foreground">{label}</h4>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * Lawyer handoff brief, laid out as a dossier: hairline-separated sections
+ * rather than nested boxes. Works from a 320px side panel (inbox context
+ * pane) up to the wide escalation view via a container query.
+ */
 export function HandoffBriefView({
   reason,
   excerpt,
@@ -11,146 +41,105 @@ export function HandoffBriefView({
   excerpt: string | null;
   brief: HandoffBrief;
 }) {
+  const { t, dir } = useLanguage();
+  const urdu = dir === 'rtl' ? 'font-urdu' : undefined;
   const factEntries = Object.entries(brief.facts ?? {});
-  const hasDocs =
-    (brief.documents?.requests?.length ?? 0) > 0 ||
-    (brief.documents?.files?.length ?? 0) > 0;
+  const requests = brief.documents?.requests ?? [];
+  const files = brief.documents?.files ?? [];
   const situation = brief.situation?.trim();
 
   return (
-    <div className="space-y-3.5 text-xs">
-      {/* 1. Executive Summary & Situation */}
-      {situation && (
-        <div className="rounded-md border border-border/80 bg-card p-3 shadow-2xs">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
-            Executive Summary
-          </p>
-          <p className="text-foreground leading-relaxed font-medium">{situation}</p>
-        </div>
-      )}
+    <div className="@container space-y-4 text-[13px] leading-relaxed">
+      {situation ? (
+        <section>
+          <h4 className="docket mb-1.5 text-muted-foreground">{t('briefSituation')}</h4>
+          <p className="text-sm leading-6 text-foreground">{situation}</p>
+        </section>
+      ) : null}
 
-      {/* 2. Matter Type & Primary Trigger */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        {brief.matterType && (
-          <div className="rounded-md border border-border/70 bg-muted/40 p-2.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
-              Matter Classification
-            </span>
-            <span className="font-semibold text-foreground mt-0.5 inline-block">
-              {brief.matterType}
-            </span>
-          </div>
-        )}
+      {brief.matterType || reason ? (
+        <dl className="grid gap-3 border-t border-border pt-3 @md:grid-cols-2">
+          {brief.matterType ? (
+            <div>
+              <dt className="docket text-muted-foreground">{t('briefMatterType')}</dt>
+              <dd className="mt-1 font-medium">{brief.matterType}</dd>
+            </div>
+          ) : null}
+          {reason ? (
+            <div>
+              <dt>
+                <Signal level="critical">{t('briefTrigger')}</Signal>
+              </dt>
+              <dd className="mt-1 font-medium text-critical">{reason}</dd>
+            </div>
+          ) : null}
+        </dl>
+      ) : null}
 
-        {reason && (
-          <div className="rounded-md border border-destructive/20 bg-destructive/5 p-2.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-destructive block flex items-center gap-1">
-              <AlertTriangle className="h-3 w-3" />
-              Escalation Trigger
-            </span>
-            <span className="font-medium text-destructive mt-0.5 inline-block">
-              {reason}
-            </span>
-          </div>
-        )}
-      </div>
+      {excerpt ? (
+        <Block label={t('briefExcerpt')}>
+          <blockquote dir="auto" className="border-s-2 border-attention ps-3 text-foreground/90">
+            “{excerpt}”
+          </blockquote>
+        </Block>
+      ) : null}
 
-      {/* 3. Detected Client Excerpt */}
-      {excerpt && (
-        <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
-          <div className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400 font-semibold text-[10px] uppercase tracking-wider mb-1">
-            <Quote className="h-3 w-3" />
-            Triggering Excerpt (WhatsApp)
-          </div>
-          <p dir="auto" className="text-foreground/90 italic font-mono text-[11px] leading-relaxed">
-            &ldquo;{excerpt}&rdquo;
-          </p>
-        </div>
-      )}
-
-      {/* 4. Extracted Key Facts */}
-      {factEntries.length > 0 && (
-        <div className="rounded-md border border-border/80 bg-card p-3 shadow-2xs">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1">
-            <ListFilter className="h-3 w-3" />
-            Verified Case Facts
-          </p>
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+      {factEntries.length > 0 ? (
+        <Block label={t('briefFacts')}>
+          <dl className="grid gap-x-6 @md:grid-cols-2">
             {factEntries.map(([key, value]) => (
-              <div key={key} className="border-b border-border/40 pb-1.5">
-                <dt className="text-[10px] text-muted-foreground capitalize font-medium">{key}</dt>
-                <dd className="font-semibold text-foreground text-[11px] mt-0.5">{value}</dd>
+              <div key={key} className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-2 border-b border-dashed border-border py-1.5">
+                <dt className="truncate text-muted-foreground">{factLabel(key)}</dt>
+                <dd className="font-medium">{value}</dd>
               </div>
             ))}
           </dl>
-        </div>
-      )}
+        </Block>
+      ) : null}
 
-      {/* 5. Documents Status */}
-      {hasDocs && (
-        <div className="rounded-md border border-border/80 bg-card p-3 shadow-2xs">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1">
-            <FileText className="h-3 w-3" />
-            Document Status
-          </p>
-          <div className="space-y-1.5">
-            {brief.documents.requests.map((row) => (
-              <div
-                key={`${row.description}-${row.status}`}
-                className="flex items-center justify-between rounded bg-muted/40 px-2 py-1"
-              >
-                <span className="text-[11px] text-foreground font-medium">{row.description}</span>
-                <Badge
-                  variant={row.status === 'VERIFIED' ? 'default' : 'outline'}
-                  className="text-[9px] py-0 h-4"
-                >
-                  {row.status}
-                </Badge>
-              </div>
-            ))}
-            {brief.documents.files.map((row) => (
-              <div
-                key={`${row.filename}-${row.docType}`}
-                className="flex items-center justify-between rounded bg-muted/40 px-2 py-1"
-              >
-                <span className="text-[11px] text-foreground font-medium">{row.filename}</span>
-                <span className="text-[10px] text-muted-foreground font-mono">{row.docType}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 6. Open Items / Questions */}
-      {brief.openItems.length > 0 && (
-        <div className="rounded-md border border-border/80 bg-card p-3 shadow-2xs">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1">
-            <HelpCircle className="h-3 w-3" />
-            Open Legal Inquiries
-          </p>
-          <ul className="space-y-1 text-[11px] text-foreground/90">
-            {brief.openItems.map((item, idx) => (
-              <li key={idx} className="flex items-start gap-1.5">
-                <span className="text-primary font-bold">·</span>
-                <span>{item}</span>
+      {requests.length > 0 || files.length > 0 ? (
+        <Block label={t('documents')}>
+          <ul className="space-y-1.5">
+            {requests.map((row) => {
+              const status = docStatus[row.status];
+              return (
+                <li key={`${row.description}-${row.status}`} className="flex items-center justify-between gap-3">
+                  <span className="min-w-0 truncate">{row.description}</span>
+                  <Signal level={status?.level ?? 'info'} className={urdu}>
+                    {status ? t(status.key) : row.status}
+                  </Signal>
+                </li>
+              );
+            })}
+            {files.map((row) => (
+              <li key={`${row.filename}-${row.docType}`} className="flex items-center justify-between gap-3">
+                <span className="min-w-0 truncate">{row.filename}</span>
+                <span className="docket text-muted-foreground">{row.docType}</span>
               </li>
             ))}
           </ul>
-        </div>
-      )}
+        </Block>
+      ) : null}
 
-      {/* 7. Recommended Next Action */}
-      {brief.nextAction && (
-        <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-primary mb-1 flex items-center gap-1">
-            <ArrowRight className="h-3 w-3" />
-            Recommended Lawyer Action
-          </p>
-          <p className="font-semibold text-foreground text-xs leading-relaxed">
-            {brief.nextAction}
-          </p>
-        </div>
-      )}
+      {brief.openItems.length > 0 ? (
+        <Block label={t('briefOpen')}>
+          <ol className="list-inside list-decimal space-y-1 marker:font-mono marker:text-muted-foreground">
+            {brief.openItems.map((item, idx) => (
+              <li key={idx}>{item}</li>
+            ))}
+          </ol>
+        </Block>
+      ) : null}
+
+      {brief.nextAction ? (
+        <section className="flex gap-3 rounded-lg bg-primary/[0.06] p-3 ring-1 ring-primary/20">
+          <ArrowRight className="mt-0.5 size-4 shrink-0 text-primary rtl:rotate-180" aria-hidden />
+          <div>
+            <h4 className="docket text-primary">{t('briefNext')}</h4>
+            <p className="mt-1 font-medium">{brief.nextAction}</p>
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }
