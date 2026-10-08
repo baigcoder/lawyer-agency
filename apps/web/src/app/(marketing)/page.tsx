@@ -8,6 +8,7 @@ import {
   Mic,
   Phone,
   PhoneMissed,
+  Plus,
   ShieldCheck,
 } from 'lucide-react';
 import { ApprovalGate } from '@/components/approval-gate';
@@ -23,6 +24,15 @@ import { Button } from '@/components/ui/button';
 import { DEMO_BRIEF } from '@/lib/demo-data';
 import { useLanguage } from '@/lib/language';
 import { cn } from '@/lib/utils';
+
+const FAQ = [
+  ['faqQ1', 'faqA1'],
+  ['faqQ2', 'faqA2'],
+  ['faqQ3', 'faqA3'],
+  ['faqQ4', 'faqA4'],
+  ['faqQ5', 'faqA5'],
+  ['faqQ6', 'faqA6'],
+] as const;
 
 export default function Home() {
   const { t, dir } = useLanguage();
@@ -200,6 +210,22 @@ export default function Home() {
           <TierLedger />
         </Section>
 
+        {/* ── FAQ — the objections, answered ──────────────────────────── */}
+        <Section id="faq" labelledBy="faq-title" innerClassName="grid gap-12 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-20">
+          <SectionHeading id="faq-title" eyebrow={t('faqLabel')} title={t('faqTitle')} urdu={isRtl} />
+          <div className="divide-y divide-border border-y border-border">
+            {FAQ.map(([q, a]) => (
+              <details key={q} className="group py-1">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-4 text-start [&::-webkit-details-marker]:hidden">
+                  <span className={cn('text-[1.05rem] font-semibold', urdu)}>{t(q)}</span>
+                  <Plus className="size-5 shrink-0 text-primary transition-transform duration-200 group-open:rotate-45" aria-hidden />
+                </summary>
+                <p className={cn('max-w-2xl pb-5 text-[0.95rem] leading-7 text-muted-foreground', urdu)}>{t(a)}</p>
+              </details>
+            ))}
+          </div>
+        </Section>
+
         {/* ── ACT 08 · Closing ────────────────────────────────────────── */}
         <Section tone="stage" size="lg" labelledBy="final-title">
           <div className="mx-auto max-w-3xl text-center">
@@ -274,7 +300,7 @@ function Hero() {
           </div>
           <Docket
             className="mt-9 border-t border-border pt-5"
-            items={[t('lpHeroLangs'), t('lpHeroUrgent'), t('lpHeroNoAdvice'), t('lpHeroApproval')]}
+            items={[t('lpHeroLangs'), t('lpHeroUrgent'), t('lpHeroNoAdvice')]}
           />
         </div>
 
