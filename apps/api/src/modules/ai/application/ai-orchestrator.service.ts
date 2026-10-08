@@ -28,6 +28,7 @@ import { wantsRomanUrdu } from './reply-script';
 import { applyFirmScopeIntent, isCasualOffTopic } from './firm-scope';
 import { isShortGreeting } from './dynamic-reply-rules';
 import { rewriteMissingAnswerReply } from './missing-answer-reply';
+import { guardReply } from './reply-guard';
 import { shouldSendAiReply } from './ai-send-policy';
 import { fastRoute, isAppointmentAsk, isUnusableVoiceTranscript } from './fast-route';
 import { mergeIntakeFields } from './intake-fields';
@@ -365,7 +366,13 @@ export class AiOrchestratorService {
       const responseText = renderFirstTurnDisclosure(
         context,
         language,
-        rewriteMissingAnswerReply(agentResult.responseText, language),
+        guardReply(rewriteMissingAnswerReply(agentResult.responseText, language), {
+          clientText,
+          sources: `${context.retrievedContext}
+${context.conversationHistory}`,
+          differentiators: context.firm.differentiators ?? [],
+          voiceGender: context.aiSettings.aiVoiceGender,
+        }),
         message.contentType === 'AUDIO' ? 'voice' : 'text',
       );
 
