@@ -1,4 +1,5 @@
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { InjectQueue } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import type { Queue } from 'bullmq';
@@ -84,7 +85,7 @@ export class EvolutionWebhookIngestService {
     if (!expected) {
       throw new UnauthorizedException('EVOLUTION_WEBHOOK_SECRET is not configured');
     }
-    if (signatureHeader !== expected) {
+    if (!secretMatches(signatureHeader, expected)) {
       throw new InvalidWebhookSignatureError();
     }
 
@@ -117,7 +118,7 @@ export class EvolutionWebhookIngestService {
       const qr = asRecord(data['qrcode']);
       const base64 = qr && typeof qr['base64'] === 'string' ? (qr['base64'] as string) : null;
       const code = qr && typeof qr['code'] === 'string' ? (qr['code'] as string) : null;
-      this.qrStore.set(payload.instance, base64 ?? code);
+      await this.qrStore.set(payload.instance, base64 ?? code);
     } else if (isCallWebhookEvent(payload.event) || isCallWebhookEvent(event)) {
       await this.handleCall(tenantId, payload.instance, event, payload.data);
     }
@@ -198,7 +199,7 @@ export class EvolutionWebhookIngestService {
         : state === 'connecting'
           ? 'connecting'
           : 'disconnected';
-    if (status === 'connected') this.qrStore.clear(instanceName);
+    if (status === 'connected') await this.qrStore.clear(instanceName);
     const phoneNumber =
       typeof data.phoneNumber === 'string'
         ? data.phoneNumber
@@ -351,4 +352,15 @@ export function normalizeEvolutionMessage(
       },
       sentAt: new Date(Number.isFinite(timestampMs) ? timestampMs : Date.now()),
     };
+}
+
+/**
+ * Constant-time secret check. `!==` returns at the first differing byte, so
+ * response timing leaks how much of a guessed secret is right. Hashing first
+ * gives both sides the same length, which timingSafeEqual requires.
+ */
+function secretMatches(given: string | undefined, expected: string): boolean {
+  if (!given) return false;
+  const digest = (value: string) => createHash('sha256').update(value).digest();
+  return timingSafeEqual(digest(given), digest(expected));
 }

@@ -104,7 +104,11 @@ export class EvolutionApiClient {
 
     const live = this.mapConnectionState(instanceName, stateRaw);
 
-    const raw = await this.call('GET', '/instance/fetchInstances').catch(() => []);
+    // Filtered server-side: the unfiltered list is every tenant's instance,
+    // fetched on each 2s poll while a QR is on screen.
+    const raw = await this.call('GET', `/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`).catch(
+      () => [],
+    );
     const instances = Array.isArray(raw) ? raw : [];
     const match = instances
       .map((r) => asRecord(r))
