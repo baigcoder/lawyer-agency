@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   NotFoundException,
   Param,
@@ -73,20 +74,35 @@ export class UsersController {
     return this.users.resendInvite(tenantId, id, principal.clerkUserId);
   }
 
+  @Delete(':id/invite')
+  @RequirePermission('users:write')
+  cancelInvite(
+    @TenantId() tenantId: string,
+    @CurrentUser() principal: RequestPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.users.cancelInvite(tenantId, id, principal.clerkUserId);
+  }
+
   @Patch(':id')
   @RequirePermission('users:write')
   update(
     @TenantId() tenantId: string,
+    @CurrentUser() principal: RequestPrincipal,
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(updateUserSchema)) body: UpdateUserInput,
   ) {
-    return this.users.update(tenantId, id, body);
+    return this.users.update(tenantId, id, body, principal.userId);
   }
 
   @Post(':id/deactivate')
   @RequirePermission('users:write')
-  deactivate(@TenantId() tenantId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.users.deactivate(tenantId, id);
+  deactivate(
+    @TenantId() tenantId: string,
+    @CurrentUser() principal: RequestPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.users.deactivate(tenantId, id, principal.userId);
   }
 
   @Post(':id/reactivate')

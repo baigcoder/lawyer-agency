@@ -4,7 +4,12 @@ import { OutboxWriter } from '../../../common/events/outbox-writer';
 import { DOMAIN_EVENTS } from '../../../common/events/domain-events';
 import { UnitOfWork } from '../../../common/prisma/unit-of-work';
 import { AuthService } from '../../auth/application/auth.service';
-import { ORGANIZATION_INVITER, type OrganizationInviter } from '../../auth/application/auth.ports';
+import {
+  ORGANIZATION_INVITER,
+  type OrganizationInviteResult,
+  type OrganizationInviter,
+} from '../../auth/application/auth.ports';
+import type { Prisma } from '../../../generated/prisma/client';
 import type { InviteUserInput, ListUsersQuery, UpdateUserInput } from './dto';
 
 export interface UserSummary {
@@ -20,7 +25,7 @@ export interface UserSummary {
 
 /** Returned after invite/resend — never includes credentials (emailed by Clerk). */
 export interface InviteUserResult extends UserSummary {
-  emailDelivery: 'sent' | 'skipped';
+  emailDelivery: OrganizationInviteResult['emailDelivery'];
 }
 
 export interface UserDetail extends UserSummary {
@@ -251,7 +256,7 @@ export class UsersService {
     role: 'org:member' | 'org:admin';
     roleLabel: string;
     inviterUserId?: string;
-  }): Promise<{ emailDelivery: 'sent' | 'skipped' }> {
+  }): Promise<OrganizationInviteResult> {
     if (!this.orgInviter.invitationsEnabled) {
       return this.orgInviter.inviteMember({
         clerkOrgId: input.clerkOrgId ?? 'dev-org',
@@ -285,13 +290,59 @@ export class UsersService {
     }
   }
 
-  async update(tenantId: string, userId: string, input: UpdateUserInput): Promise<UserSummary> {
+  /**
+   * Withdraws a pending invitation: the emailed link stops working and the row
+   * leaves the team list. Before this the only option was "deactivate", which
+   * left the Clerk invitation live: the invitee could still join, then hit an
+   * unexplained "account not active" wall.
+   */
+  async cancelInvite(tenantId: string, userId: string, inviterClerkUserId?: string): Promise<void> {
+    const pending = await this.uow.withTenant(tenantId, async (tx) => {
+      const current = await tx.user.findFirst({ where: { id: userId } });
+      if (!current) throw new NotFoundException('user not found');
+      if (current.status !== 'INVITED') {
+        throw new BadRequestException('Only pending invitations can be cancelled');
+      }
+      const tenant = await tx.tenant.findUnique({ where: { id: tenantId }, select: { clerkOrgId: true } });
+      return { email: current.email, clerkOrgId: tenant?.clerkOrgId ?? null };
+    });
+
+    // Revoke first: if Clerk is unreachable the row stays, so the owner can retry.
+    if (this.orgInviter.invitationsEnabled && pending.clerkOrgId) {
+      const clerkInviterId =
+        inviterClerkUserId && !inviterClerkUserId.startsWith('invite_') ? inviterClerkUserId : undefined;
+      try {
+        await this.orgInviter.revokeInvitation({
+          clerkOrgId: pending.clerkOrgId,
+          email: pending.email,
+          ...(clerkInviterId ? { inviterUserId: clerkInviterId } : {}),
+        });
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : 'Clerk revoke failed';
+        throw new BadGatewayException(`Could not withdraw the invitation (${detail}). Try again.`);
+      }
+    }
+
+    await this.uow.withTenant(tenantId, async (tx) => {
+      await tx.user.deleteMany({ where: { id: userId, status: 'INVITED' } });
+    });
+  }
+
+  async update(
+    tenantId: string,
+    userId: string,
+    input: UpdateUserInput,
+    actorUserId?: string,
+  ): Promise<UserSummary> {
     return this.uow.withTenant(tenantId, async (tx) => {
       const current = await tx.user.findFirst({
         where: { id: userId },
         include: { role: true },
       });
       if (!current) throw new NotFoundException('user not found');
+      if (input.status === 'SUSPENDED' && userId === actorUserId) {
+        throw new BadRequestException('You cannot deactivate your own account.');
+      }
 
       if (input.roleId && input.roleId !== current.roleId) {
         const role = await tx.role.findUnique({ where: { id: input.roleId } });
@@ -305,6 +356,11 @@ export class UsersService {
         });
       }
 
+      const losesAdmin =
+        (input.roleId !== undefined && input.roleId !== current.roleId) ||
+        (input.status !== undefined && input.status !== 'ACTIVE');
+      if (losesAdmin) await this.assertNotLastAdmin(tx, current);
+
       const data: Record<string, unknown> = {};
       if (input.name !== undefined) data.name = input.name;
       if (input.roleId !== undefined) data.roleId = input.roleId;
@@ -316,6 +372,9 @@ export class UsersService {
         data,
         include: { role: true },
       });
+      if (input.roleId !== undefined || input.status !== undefined) {
+        await this.syncClerkRole(tx, tenantId, updated);
+      }
       return {
         id: updated.id,
         name: updated.name,
@@ -329,14 +388,65 @@ export class UsersService {
     });
   }
 
-  async deactivate(tenantId: string, userId: string): Promise<void> {
+  async deactivate(tenantId: string, userId: string, actorUserId?: string): Promise<void> {
     return this.uow.withTenant(tenantId, async (tx) => {
-      const current = await tx.user.findFirst({ where: { id: userId } });
+      const current = await tx.user.findFirst({ where: { id: userId }, include: { role: true } });
       if (!current) throw new NotFoundException('user not found');
       if (current.status === 'SUSPENDED') return;
-      await tx.user.update({ where: { id: userId }, data: { status: 'SUSPENDED' } });
+      if (userId === actorUserId) {
+        throw new BadRequestException('You cannot deactivate your own account.');
+      }
+      await this.assertNotLastAdmin(tx, current);
+      const suspended = await tx.user.update({
+        where: { id: userId },
+        data: { status: 'SUSPENDED' },
+        include: { role: true },
+      });
+      await this.syncClerkRole(tx, tenantId, suspended);
       await this.outbox.append(tx, tenantId, DOMAIN_EVENTS.UserDeactivated, { userId });
     });
+  }
+
+  /**
+   * Clerk org admins can invite from Clerk's own UI, and an org admin with no
+   * local row is auto-provisioned as Admin, so the Clerk role must follow the
+   * local one: org:admin only while the user is an active Admin. Runs inside
+   * the caller's transaction, so if Clerk refuses, the local change is rolled
+   * back rather than leaving the two out of step.
+   */
+  private async syncClerkRole(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    user: { clerkUserId: string; status: string; role: { name: string } },
+  ): Promise<void> {
+    if (!this.orgInviter.invitationsEnabled || user.clerkUserId.startsWith('invite_')) return;
+    const tenant = await tx.tenant.findUnique({ where: { id: tenantId }, select: { clerkOrgId: true } });
+    if (!tenant?.clerkOrgId) return;
+    const role = user.status === 'ACTIVE' && user.role.name === 'Admin' ? 'org:admin' : 'org:member';
+    try {
+      await this.orgInviter.syncMemberRole({ clerkOrgId: tenant.clerkOrgId, clerkUserId: user.clerkUserId, role });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Clerk update failed';
+      throw new BadGatewayException(`Could not update their access in Clerk (${detail}). Nothing was changed; try again.`);
+    }
+  }
+
+  /**
+   * Every permission to manage the team sits with Admin, so suspending or
+   * demoting the only active Admin locked the whole firm out of its own
+   * settings, with no way back from the dashboard.
+   */
+  private async assertNotLastAdmin(
+    tx: Prisma.TransactionClient,
+    user: { id: string; status: string; role: { name: string } },
+  ): Promise<void> {
+    if (user.role.name !== 'Admin' || user.status !== 'ACTIVE') return;
+    const otherAdmins = await tx.user.count({
+      where: { id: { not: user.id }, status: 'ACTIVE', role: { name: 'Admin' } },
+    });
+    if (otherAdmins === 0) {
+      throw new BadRequestException('The firm needs at least one active Admin. Make someone else Admin first.');
+    }
   }
 
   async reactivate(tenantId: string, userId: string): Promise<void> {
@@ -344,7 +454,12 @@ export class UsersService {
       const current = await tx.user.findFirst({ where: { id: userId } });
       if (!current) throw new NotFoundException('user not found');
       if (current.status === 'ACTIVE') return;
-      await tx.user.update({ where: { id: userId }, data: { status: 'ACTIVE' } });
+      const active = await tx.user.update({
+        where: { id: userId },
+        data: { status: 'ACTIVE' },
+        include: { role: true },
+      });
+      await this.syncClerkRole(tx, tenantId, active);
     });
   }
 }

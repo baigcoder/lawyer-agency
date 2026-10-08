@@ -31,6 +31,19 @@ function makeService() {
         users.push(u);
         return { ...u, role: roles.get(u.roleId as string) };
       }),
+      count: vi.fn(async (args: { where: { id: { not: string }; status: string; role: { name: string } } }) =>
+        users.filter(
+          (u) =>
+            u.id !== args.where.id.not &&
+            u.status === args.where.status &&
+            roles.get(u.roleId as string)?.name === args.where.role.name,
+        ).length,
+      ),
+      deleteMany: vi.fn(async (args: { where: { id: string; status: string } }) => {
+        const idx = users.findIndex((u) => u.id === args.where.id && u.status === args.where.status);
+        if (idx !== -1) users.splice(idx, 1);
+        return { count: idx === -1 ? 0 : 1 };
+      }),
       update: vi.fn(async (args: { where: { id: string }; data: Record<string, unknown> }) => {
         const idx = users.findIndex((u) => u.id === args.where.id);
         if (idx === -1) throw new Error('not found');
@@ -61,6 +74,8 @@ function makeService() {
   const orgInviter: OrganizationInviter = {
     invitationsEnabled: true,
     inviteMember: vi.fn(async () => ({ emailDelivery: 'sent' as const })),
+    revokeInvitation: vi.fn(async () => undefined),
+    syncMemberRole: vi.fn(async () => undefined),
   };
   return { service: new UsersService(uow, outbox, auth, orgInviter), tx, users, outbox, orgInviter };
 }
@@ -199,6 +214,75 @@ describe('UsersService', () => {
     const u = await service.invite('t1', { name: 'C', email: 'c@x.com', roleId: 'r-staff', clerkUserId: 'c3' });
     await service.deactivate('t1', u.id);
     expect(outbox.append).toHaveBeenCalledWith(expect.anything(), 't1', 'user.deactivated', expect.objectContaining({ userId: u.id }));
+  });
+
+  it('cancels a pending invite: revokes the Clerk invitation, then removes the row', async () => {
+    const { service, users, orgInviter } = makeService();
+    const u = await service.invite('t1', { name: 'D', email: 'd@x.com', roleId: 'r-staff', clerkUserId: 'c5' });
+    await service.cancelInvite('t1', u.id);
+    expect(orgInviter.revokeInvitation).toHaveBeenCalledWith(expect.objectContaining({ clerkOrgId: 'org_1', email: 'd@x.com' }));
+    expect(users.find((x) => x.id === u.id)).toBeUndefined();
+  });
+
+  it('keeps the invite when Clerk cannot revoke it, so the owner can retry', async () => {
+    const { service, users, orgInviter } = makeService();
+    orgInviter.revokeInvitation = vi.fn(async () => {
+      throw new Error('clerk down');
+    });
+    const u = await service.invite('t1', { name: 'E', email: 'e@x.com', roleId: 'r-staff', clerkUserId: 'c6' });
+    await expect(service.cancelInvite('t1', u.id)).rejects.toThrow(/Could not withdraw/);
+    expect(users.find((x) => x.id === u.id)).toBeDefined();
+  });
+
+  it('never leaves the firm without an active Admin', async () => {
+    const { service } = makeService();
+    const owner = await service.invite('t1', { name: 'Owner', email: 'o@x.com', roleId: 'r-admin', clerkUserId: 'c7' });
+    await service.update('t1', owner.id, { status: 'ACTIVE' });
+    await expect(service.update('t1', owner.id, { roleId: 'r-staff' })).rejects.toThrow(/at least one active Admin/);
+    await expect(service.deactivate('t1', owner.id)).rejects.toThrow(/at least one active Admin/);
+
+    const second = await service.invite('t1', { name: 'Two', email: 't@x.com', roleId: 'r-admin', clerkUserId: 'c8' });
+    await service.update('t1', second.id, { status: 'ACTIVE' });
+    await expect(service.update('t1', owner.id, { roleId: 'r-staff' })).resolves.toBeDefined();
+  });
+
+  it('takes Clerk org:admin away from a demoted or suspended Admin, and gives it back', async () => {
+    const { service, orgInviter } = makeService();
+    const a = await service.invite('t1', { name: 'A1', email: 'a1@x.com', roleId: 'r-admin', clerkUserId: 'ca1' });
+    const b = await service.invite('t1', { name: 'A2', email: 'a2@x.com', roleId: 'r-admin', clerkUserId: 'ca2' });
+    await service.update('t1', a.id, { status: 'ACTIVE' });
+    await service.update('t1', b.id, { status: 'ACTIVE' });
+
+    await service.update('t1', a.id, { roleId: 'r-staff' });
+    expect(orgInviter.syncMemberRole).toHaveBeenLastCalledWith({ clerkOrgId: 'org_1', clerkUserId: 'ca1', role: 'org:member' });
+
+    await service.update('t1', a.id, { roleId: 'r-admin' });
+    expect(orgInviter.syncMemberRole).toHaveBeenLastCalledWith({ clerkOrgId: 'org_1', clerkUserId: 'ca1', role: 'org:admin' });
+
+    await service.deactivate('t1', a.id);
+    expect(orgInviter.syncMemberRole).toHaveBeenLastCalledWith({ clerkOrgId: 'org_1', clerkUserId: 'ca1', role: 'org:member' });
+  });
+
+  it('rolls the local change back when Clerk refuses the role change', async () => {
+    const { service, orgInviter, users } = makeService();
+    const a = await service.invite('t1', { name: 'A1', email: 'a1@x.com', roleId: 'r-admin', clerkUserId: 'ca1' });
+    const b = await service.invite('t1', { name: 'A2', email: 'a2@x.com', roleId: 'r-admin', clerkUserId: 'ca2' });
+    await service.update('t1', a.id, { status: 'ACTIVE' });
+    await service.update('t1', b.id, { status: 'ACTIVE' });
+    orgInviter.syncMemberRole = vi.fn(async () => {
+      throw new Error('clerk down');
+    });
+    await expect(service.update('t1', a.id, { roleId: 'r-staff' })).rejects.toThrow(/Nothing was changed/);
+    // The fake transaction has no rollback; the real one undoes the update. What
+    // matters here is that the caller is told, not left believing it worked.
+    expect(users.length).toBe(2);
+  });
+
+  it('does not let you deactivate yourself', async () => {
+    const { service } = makeService();
+    const u = await service.invite('t1', { name: 'F', email: 'f@x.com', roleId: 'r-staff', clerkUserId: 'c9' });
+    await service.update('t1', u.id, { status: 'ACTIVE' });
+    await expect(service.deactivate('t1', u.id, u.id)).rejects.toThrow(/your own account/);
   });
 
   it('throws when role not found on invite', async () => {

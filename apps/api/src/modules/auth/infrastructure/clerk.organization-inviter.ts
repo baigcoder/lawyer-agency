@@ -8,8 +8,9 @@ import type { OrganizationInviter, OrganizationInviteResult } from '../applicati
  * RBAC source; Clerk membership is only the authN gate (D-116).
  *
  * Pending duplicates are revoked and re-created so "Resend invite" emails again.
- * If a prior credentials-invite path already added them as a member without
- * emailing, membership is removed so a fresh invite email can be sent.
+ * Someone who already joined is reported as such — their membership used to be
+ * deleted so a fresh email could go out, which signed a working colleague out
+ * of the firm on every resend.
  */
 export class ClerkOrganizationInviter implements OrganizationInviter {
   readonly invitationsEnabled = true;
@@ -30,7 +31,6 @@ export class ClerkOrganizationInviter implements OrganizationInviter {
   }): Promise<OrganizationInviteResult> {
     const clerk = createClerkClient({ secretKey: this.secretKey });
     const email = input.email.trim().toLowerCase();
-    await this.dropStaleMembership(clerk, input.clerkOrgId, email);
 
     const payload = this.toCreateParams({ ...input, email });
     try {
@@ -38,10 +38,10 @@ export class ClerkOrganizationInviter implements OrganizationInviter {
     } catch (error) {
       if (isAlreadyOrganizationMember(error)) {
         this.logger.log({ email, clerkOrgId: input.clerkOrgId }, 'Invitee already in org — no email needed');
-        return { emailDelivery: 'sent' };
+        return { emailDelivery: 'already_member' };
       }
       if (!isPendingInvitationConflict(error)) throw error;
-      await this.revokePendingInvitation(clerk, { ...input, email });
+      await this.revokePending(clerk, { ...input, email });
       await clerk.organizations.createOrganizationInvitation(payload);
     }
 
@@ -67,26 +67,40 @@ export class ClerkOrganizationInviter implements OrganizationInviter {
     };
   }
 
-  private async dropStaleMembership(
-    clerk: ReturnType<typeof createClerkClient>,
-    organizationId: string,
-    email: string,
-  ): Promise<void> {
-    const { data } = await clerk.users.getUserList({ emailAddress: [email], limit: 1 });
+  async revokeInvitation(input: { clerkOrgId: string; email: string; inviterUserId?: string }): Promise<void> {
+    const clerk = createClerkClient({ secretKey: this.secretKey });
+    await this.revokePending(clerk, input);
+    // Accepted already: the membership is what grants access, so remove it.
+    const { data } = await clerk.users.getUserList({ emailAddress: [input.email.toLowerCase()], limit: 1 });
     const user = data[0];
     if (!user) return;
     try {
-      await clerk.organizations.deleteOrganizationMembership({
-        organizationId,
-        userId: user.id,
-      });
-      this.logger.log({ email, organizationId }, 'Removed stale org membership before invite email');
-    } catch {
-      // Not a member — nothing to clear.
+      await clerk.organizations.deleteOrganizationMembership({ organizationId: input.clerkOrgId, userId: user.id });
+      this.logger.log({ organizationId: input.clerkOrgId }, 'Removed accepted membership of a cancelled invite');
+    } catch (error) {
+      if (!isNotFound(error)) throw error;
     }
   }
 
-  private async revokePendingInvitation(
+  async syncMemberRole(input: {
+    clerkOrgId: string;
+    clerkUserId: string;
+    role: 'org:member' | 'org:admin';
+  }): Promise<void> {
+    const clerk = createClerkClient({ secretKey: this.secretKey });
+    try {
+      await clerk.organizations.updateOrganizationMembership({
+        organizationId: input.clerkOrgId,
+        userId: input.clerkUserId,
+        role: input.role,
+      });
+    } catch (error) {
+      // Not a member of the org: there is no Clerk role to take away.
+      if (!isNotFound(error)) throw error;
+    }
+  }
+
+  private async revokePending(
     clerk: ReturnType<typeof createClerkClient>,
     input: { clerkOrgId: string; email: string; inviterUserId?: string },
   ): Promise<void> {
@@ -113,6 +127,18 @@ export class NoopOrganizationInviter implements OrganizationInviter {
   async inviteMember(): Promise<OrganizationInviteResult> {
     return { emailDelivery: 'skipped' };
   }
+
+  async revokeInvitation(): Promise<void> {}
+
+  async syncMemberRole(): Promise<void> {}
+}
+
+function isNotFound(error: unknown): boolean {
+  const status =
+    typeof error === 'object' && error !== null && 'status' in error
+      ? Number((error as { status: unknown }).status)
+      : undefined;
+  return status === 404 || clerkErrorCodes(error).includes('resource_not_found');
 }
 
 export function isAlreadyOrganizationMember(error: unknown): boolean {

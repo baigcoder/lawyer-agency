@@ -1067,6 +1067,11 @@ export const translations = {
     demoAiWriting: 'Wakeel is writing…',
     demoTyping: 'typing…',
     demoJustNow: 'just now',
+    cancelInvite: 'Cancel invite',
+    inviteCancelled: 'Invitation cancelled. The email link no longer works.',
+    couldNotCancelInvite: 'Could not cancel the invitation.',
+    confirmCancelInvite: 'Cancel the invitation to {email}? Their email link will stop working.',
+    inviteAlreadyMember: 'They have already joined. Ask them to sign in; no new email was sent.',
   },
   ur: {
     overview: 'جائزہ',
@@ -2116,6 +2121,11 @@ export const translations = {
     demoAiWriting: 'ویکل لکھ رہا ہے…',
     demoTyping: 'لکھ رہے ہیں…',
     demoJustNow: 'ابھی',
+    cancelInvite: 'دعوت منسوخ کریں',
+    inviteCancelled: 'دعوت منسوخ ہو گئی۔ ای میل کا لنک اب کام نہیں کرے گا۔',
+    couldNotCancelInvite: 'دعوت منسوخ نہیں ہو سکی۔',
+    confirmCancelInvite: '{email} کی دعوت منسوخ کریں؟ ان کا ای میل لنک کام کرنا بند کر دے گا۔',
+    inviteAlreadyMember: 'وہ پہلے ہی شامل ہو چکے ہیں۔ انہیں سائن اِن کرنے کا کہیں، نیا ای میل نہیں بھیجا گیا۔',
   },
 } as const;
 
