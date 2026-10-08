@@ -148,6 +148,38 @@ describe('AuthService', () => {
     expect(principal.permissions).toContain('cases:read');
   });
 
+  it('takes Clerk org:admin away from a team member who is not an active Admin', async () => {
+    const { uow } = mockUow({
+      user: {
+        id: 'user-1',
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+        clerkUserId: 'clerk_user_1',
+        status: 'ACTIVE',
+        role: makeRole('Lawyer', ['cases:read']),
+        permissions: ['cases:read'],
+      },
+    });
+    const inviter = {
+      invitationsEnabled: true,
+      inviteMember: vi.fn(),
+      revokeInvitation: vi.fn(),
+      syncMemberRole: vi.fn(async () => undefined),
+    };
+    const service = new AuthService(uow, inviter);
+
+    await service.resolvePrincipal({ clerkUserId: 'clerk_user_1', clerkOrgId: 'org_1', clerkOrgRole: 'org:admin' });
+    expect(inviter.syncMemberRole).toHaveBeenCalledWith({
+      clerkOrgId: 'org_1',
+      clerkUserId: 'clerk_user_1',
+      role: 'org:member',
+    });
+
+    inviter.syncMemberRole.mockClear();
+    await service.resolvePrincipal({ clerkUserId: 'clerk_user_1', clerkOrgId: 'org_1', clerkOrgRole: 'org:member' });
+    expect(inviter.syncMemberRole).not.toHaveBeenCalled();
+  });
+
   it('rejects when organization is not mapped to a tenant', async () => {
     const { uow } = mockUow({ tenant: null });
     const service = new AuthService(uow);

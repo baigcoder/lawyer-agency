@@ -263,6 +263,26 @@ describe('UsersService', () => {
     expect(orgInviter.syncMemberRole).toHaveBeenLastCalledWith({ clerkOrgId: 'org_1', clerkUserId: 'ca1', role: 'org:member' });
   });
 
+  it('re-roles an invitee who has not signed in by email, never touching other members', async () => {
+    const { service, orgInviter } = makeService();
+    const member = await service.invite('t1', { name: 'M', email: 'm@x.com', roleId: 'r-staff', clerkUserId: 'clerk_m' });
+    await service.update('t1', member.id, { status: 'ACTIVE' });
+    const invitee = await service.invite('t1', { name: 'I', email: 'i@x.com', roleId: 'r-admin' });
+
+    await service.update('t1', invitee.id, { roleId: 'r-staff' });
+    expect(orgInviter.syncMemberRole).toHaveBeenLastCalledWith({
+      clerkOrgId: 'org_1',
+      role: 'org:member',
+      email: 'i@x.com',
+      protectedClerkUserIds: expect.arrayContaining(['clerk_m']),
+    });
+
+    await service.update('t1', invitee.id, { status: 'SUSPENDED' });
+    expect(orgInviter.revokeInvitation).toHaveBeenLastCalledWith(
+      expect.objectContaining({ email: 'i@x.com', protectedClerkUserIds: expect.arrayContaining(['clerk_m']) }),
+    );
+  });
+
   it('rolls the local change back when Clerk refuses the role change', async () => {
     const { service, orgInviter, users } = makeService();
     const a = await service.invite('t1', { name: 'A1', email: 'a1@x.com', roleId: 'r-admin', clerkUserId: 'ca1' });

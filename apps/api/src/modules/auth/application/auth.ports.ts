@@ -47,13 +47,27 @@ export interface OrganizationInviter {
    * membership behind let a cancelled Admin invitee sign in later and be
    * auto-provisioned as Admin.
    */
-  revokeInvitation(input: { clerkOrgId: string; email: string; inviterUserId?: string }): Promise<void>;
+  revokeInvitation(input: {
+    clerkOrgId: string;
+    email: string;
+    inviterUserId?: string;
+    /** Clerk users that belong to other team members: never touched by an email lookup. */
+    protectedClerkUserIds: string[];
+  }): Promise<void>;
   /**
    * Mirror the local role onto the Clerk org membership. Clerk org admins can
    * invite people (who then auto-provision as Admin) from Clerk's own UI, so a
    * demoted or suspended Admin must lose org:admin there too.
    */
-  syncMemberRole(input: { clerkOrgId: string; clerkUserId: string; role: 'org:member' | 'org:admin' }): Promise<void>;
+  syncMemberRole(input: {
+    clerkOrgId: string;
+    role: 'org:member' | 'org:admin';
+    /** Known once they have signed in. */
+    clerkUserId?: string;
+    /** For an invitee not yet signed in: their pending invitation and, if accepted, their membership. */
+    email?: string;
+    protectedClerkUserIds?: string[];
+  }): Promise<void>;
 }
 
 export const ORGANIZATION_INVITER = Symbol('ORGANIZATION_INVITER');

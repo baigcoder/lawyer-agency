@@ -1,7 +1,7 @@
-import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, Logger, Optional, UnauthorizedException } from '@nestjs/common';
 import type { Prisma, Role } from '../../../generated/prisma/client';
 import { UnitOfWork } from '../../../common/prisma/unit-of-work';
-import type { VerifiedToken } from './auth.ports';
+import { ORGANIZATION_INVITER, type OrganizationInviter, type VerifiedToken } from './auth.ports';
 import { isClerkOrgAdmin } from './clerk-claims';
 
 export interface ResolvedPrincipal {
@@ -71,7 +71,25 @@ const SYSTEM_ROLES: Array<{ name: string; permissions: string[] }> = [
  */
 @Injectable()
 export class AuthService {
-  constructor(private readonly uow: UnitOfWork) {}
+  private readonly logger = new Logger(AuthService.name);
+
+  constructor(
+    private readonly uow: UnitOfWork,
+    @Optional() @Inject(ORGANIZATION_INVITER) private readonly orgInviter?: OrganizationInviter,
+  ) {}
+
+  private demoteInClerk(clerkOrgId: string, clerkUserId: string): void {
+    if (!this.orgInviter?.invitationsEnabled) return;
+    void this.orgInviter
+      .syncMemberRole({ clerkOrgId, clerkUserId, role: 'org:member' })
+      .then(() => this.logger.warn({ clerkOrgId }, 'Clerk org:admin removed from a non-Admin team member'))
+      .catch((error: unknown) =>
+        this.logger.warn(
+          { clerkOrgId, err: error instanceof Error ? error.message : String(error) },
+          'could not remove Clerk org:admin from a non-Admin team member',
+        ),
+      );
+  }
 
   async resolvePrincipal(token: VerifiedToken): Promise<ResolvedPrincipal> {
     const clerkOrgId = token.clerkOrgId;
@@ -106,6 +124,13 @@ export class AuthService {
 
       if (!user) {
         user = await this.provisionOwnerIfAllowed(tx, tenant.id, token);
+      }
+
+      // Safety net for any drift (edits in the Clerk dashboard, a missed sync):
+      // org:admin in Clerk lets someone invite new Admins from Clerk's own UI,
+      // so anyone who is not an active Admin here loses it on their next request.
+      if (isClerkOrgAdmin(token.clerkOrgRole) && !(user.status === 'ACTIVE' && user.role.name === 'Admin')) {
+        this.demoteInClerk(clerkOrgId, token.clerkUserId);
       }
 
       if (user.status !== 'ACTIVE') {

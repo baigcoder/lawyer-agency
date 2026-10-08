@@ -304,7 +304,11 @@ export class UsersService {
         throw new BadRequestException('Only pending invitations can be cancelled');
       }
       const tenant = await tx.tenant.findUnique({ where: { id: tenantId }, select: { clerkOrgId: true } });
-      return { email: current.email, clerkOrgId: tenant?.clerkOrgId ?? null };
+      return {
+        email: current.email,
+        clerkOrgId: tenant?.clerkOrgId ?? null,
+        protectedClerkUserIds: await this.teamClerkUserIds(tx),
+      };
     });
 
     // Revoke first: if Clerk is unreachable the row stays, so the owner can retry.
@@ -315,6 +319,7 @@ export class UsersService {
         await this.orgInviter.revokeInvitation({
           clerkOrgId: pending.clerkOrgId,
           email: pending.email,
+          protectedClerkUserIds: pending.protectedClerkUserIds,
           ...(clerkInviterId ? { inviterUserId: clerkInviterId } : {}),
         });
       } catch (error) {
@@ -417,18 +422,43 @@ export class UsersService {
   private async syncClerkRole(
     tx: Prisma.TransactionClient,
     tenantId: string,
-    user: { clerkUserId: string; status: string; role: { name: string } },
+    user: { clerkUserId: string; email: string; status: string; role: { name: string } },
   ): Promise<void> {
-    if (!this.orgInviter.invitationsEnabled || user.clerkUserId.startsWith('invite_')) return;
+    if (!this.orgInviter.invitationsEnabled) return;
     const tenant = await tx.tenant.findUnique({ where: { id: tenantId }, select: { clerkOrgId: true } });
     if (!tenant?.clerkOrgId) return;
+    const clerkOrgId = tenant.clerkOrgId;
     const role = user.status === 'ACTIVE' && user.role.name === 'Admin' ? 'org:admin' : 'org:member';
+    // Not signed in yet: no Clerk id to address, but the invitation (pending,
+    // or accepted and waiting for first sign-in) already carries a role.
+    const invitee = user.clerkUserId.startsWith('invite_');
     try {
-      await this.orgInviter.syncMemberRole({ clerkOrgId: tenant.clerkOrgId, clerkUserId: user.clerkUserId, role });
+      if (!invitee) {
+        await this.orgInviter.syncMemberRole({ clerkOrgId, clerkUserId: user.clerkUserId, role });
+      } else if (user.status === 'SUSPENDED') {
+        await this.orgInviter.revokeInvitation({
+          clerkOrgId,
+          email: user.email,
+          protectedClerkUserIds: await this.teamClerkUserIds(tx),
+        });
+      } else {
+        await this.orgInviter.syncMemberRole({
+          clerkOrgId,
+          role,
+          email: user.email,
+          protectedClerkUserIds: await this.teamClerkUserIds(tx),
+        });
+      }
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'Clerk update failed';
       throw new BadGatewayException(`Could not update their access in Clerk (${detail}). Nothing was changed; try again.`);
     }
+  }
+
+  /** Clerk accounts already bound to team members — an email lookup must never touch these. */
+  private async teamClerkUserIds(tx: Prisma.TransactionClient): Promise<string[]> {
+    const rows = await tx.user.findMany({ where: { status: { not: 'INVITED' } }, select: { clerkUserId: true } });
+    return rows.map((r) => r.clerkUserId).filter((id) => !id.startsWith('invite_'));
   }
 
   /**
