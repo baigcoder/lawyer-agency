@@ -200,6 +200,25 @@ export const INCOMING: DemoConversation = {
   ],
 };
 
+/** Arrives mid-demo with a deadline — the escalation path, live. */
+export const INCOMING_URGENT: DemoConversation = {
+  id: 'c-tariq',
+  client: 'Tariq Mehmood',
+  phone: '+92 301 •••• 486',
+  language: 'Roman Urdu',
+  state: 'HUMAN_REQUIRED',
+  signal: 'urgent',
+  caseRef: 'WK-1050',
+  matter: 'Banking · freeze notice',
+  unread: 1,
+  time: 'now',
+  preview: 'Bank ne notice bheja hai — kal subah 10 baje tak jawab na diya to account freeze.',
+  messages: [
+    { id: 't1', from: 'client', body: 'Bank ne notice bheja hai — kal subah 10 baje tak jawab na diya to account freeze kar denge. Business ka account hai.', time: 'now' },
+    { id: 't2', from: 'system', body: 'Deadline under 24h detected — automation paused, escalated to the duty lawyer', time: 'now' },
+  ],
+};
+
 export type DemoEscalation = {
   id: string;
   trigger: EscalationTrigger;
@@ -263,6 +282,36 @@ export const ESCALATIONS: DemoEscalation[] = [
       nextAction: 'Consultation today 15:00 with Hira Saleem.',
     },
   },
+];
+
+/** Raised live alongside INCOMING_URGENT; the deadline is stamped on arrival. */
+export const LIVE_ESCALATION: DemoEscalation = {
+  id: 'e4',
+  trigger: 'IMMINENT_DEADLINE',
+  client: 'Tariq Mehmood',
+  caseRef: 'WK-1050',
+  status: 'OPEN',
+  slaSeconds: 15 * 60,
+  excerpt: 'Bank ne notice bheja hai — kal subah 10 baje tak jawab na diya to account freeze kar denge.',
+  brief: {
+    reason: 'Reply to a bank notice due tomorrow 10:00; business account at risk of freeze.',
+    matterType: 'Banking · account freeze notice',
+    situation: 'Client received a notice from his bank and must respond by 10:00 tomorrow or the business account will be frozen. Notice not yet shared.',
+    facts: { client: 'Tariq Mehmood', deadline: 'Tomorrow, 10:00', account: 'Business current account' },
+    documents: { requests: [{ description: 'Copy of the bank notice', status: 'PENDING' }], files: [] },
+    openItems: ['Which bank and branch issued the notice?'],
+    nextAction: 'Claim, call the client tonight and obtain the notice.',
+  },
+};
+
+export type DemoActivity = { id: string; time: string; what: string; who: string; source: string };
+
+/** “What Wakeel did” — seeded history; the live script prepends to it. */
+export const ACTIVITY: DemoActivity[] = [
+  { id: 'act-4', time: '10:09', what: 'Answered fee & hours question', who: 'Sana Ahmed', source: 'FAQ · Fees & hours' },
+  { id: 'act-3', time: '09:24', what: 'Told client the next hearing date', who: 'Bilal Hussain', source: 'Case diary' },
+  { id: 'act-2', time: '23:44', what: 'Opened WK-1042, requested FIR & CNIC', who: 'Ahmed Raza', source: 'Intake' },
+  { id: 'act-1', time: '23:43', what: 'Stopped automation — arrest detected', who: 'Ahmed Raza', source: 'Safety rule' },
 ];
 
 export type DemoCase = {

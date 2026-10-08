@@ -2,7 +2,7 @@
 
 import { createContext, useContext, type ReactNode } from 'react';
 import type { DashboardView } from '@/lib/dashboard-nav';
-import type { DemoConversation, DemoEscalation, DemoPayment } from '@/lib/demo-workspace';
+import type { DemoActivity, DemoConversation, DemoEscalation, DemoPayment } from '@/lib/demo-workspace';
 import type { UiSound } from '@/lib/ui-sound';
 
 export interface DemoContextValue {
@@ -25,6 +25,9 @@ export interface DemoContextValue {
   setFocusCase: (ref: string | null) => void;
   play: (cue: UiSound) => void;
   arrivedId: string | null;
+  /** Who is typing in which conversation right now (live script). */
+  typing: { id: string; who: 'client' | 'ai' } | null;
+  activity: DemoActivity[];
 }
 
 export const DemoContext = createContext<DemoContextValue | null>(null);

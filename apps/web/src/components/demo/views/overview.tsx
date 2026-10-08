@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
 export function OverviewView() {
   const { t, dir } = useLanguage();
   const urdu = dir === 'rtl' ? 'font-urdu' : undefined;
-  const { go, conversations, escalations, payments } = useDemo();
+  const { go, conversations, escalations, payments, activity } = useDemo();
 
   const critical = escalations.filter((e) => e.status === 'OPEN');
   const waiting = conversations.filter((c) => c.state === 'HUMAN_REQUIRED');
@@ -125,18 +125,13 @@ export function OverviewView() {
           </Panel>
 
           <Panel title={t('demoAiActivity')} meta={t('demoAiActivityMeta')} bodyClassName="px-4 py-3">
-            <ul className="space-y-2.5 text-[13px]">
-              {[
-                ['10:09', 'Answered fee & hours question', 'Sana Ahmed', 'FAQ · Fees & hours'],
-                ['09:24', 'Told client the next hearing date', 'Bilal Hussain', 'Case diary'],
-                ['23:44', 'Opened WK-1042, requested FIR & CNIC', 'Ahmed Raza', 'Intake'],
-                ['23:43', 'Stopped automation — arrest detected', 'Ahmed Raza', 'Safety rule'],
-              ].map(([time, what, who, source]) => (
-                <li key={time + what} className="flex gap-3">
-                  <Bot className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+            <ul className="space-y-2.5 text-[13px]" aria-live="polite">
+              {activity.slice(0, 6).map((a) => (
+                <li key={a.id} className={cn('flex gap-3', a.id === activity[0]?.id && a.time === 'now' && 'row-arrive')}>
+                  <Bot className={cn('mt-0.5 size-3.5 shrink-0', a.time === 'now' ? 'text-primary' : 'text-muted-foreground')} aria-hidden />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate">{what}</p>
-                    <Docket items={[time, who, source]} />
+                    <p className="truncate">{a.what}</p>
+                    <Docket items={[a.time === 'now' ? t('demoJustNow') : a.time, a.who, a.source]} />
                   </div>
                 </li>
               ))}
