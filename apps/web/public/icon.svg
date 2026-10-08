@@ -1,49 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Wakeel">
-  <!--
-    Wakeel app mark: scales of justice on the brand emerald tile.
-
-    Built for 16x16 first — that is the size a browser tab actually renders.
-    Every stroke is >= 34/512 units (~1.1px at 16px) so nothing thins out to
-    nothing, the pans are solid rather than outlined, and there are no SVG
-    filters or hairline chains (the previous mark had 6-unit chains and a
-    Gaussian glow, both of which turned to mush below 32px).
-
-    Colours are the real brand tokens: emerald-500 to emerald-700, matching
-    the primary colour variable in globals.css. The filled tile means the mark
-    keeps its contrast on a light or a dark browser tab without needing a
-    variant.
-
-    No double hyphen anywhere in this comment: XML forbids it, and one
-    ("dash dash primary") made browsers reject the whole file as an image.
-  -->
+  <!-- Wakeel app mark: the same W monogram as the in-app logo (components/wakeel-monogram.tsx),
+       scaled 16x from its 32-unit grid. Built for a 16px tab first: the W stroke is 46/512
+       (~1.4px at 16px) and the dot ~1.5px, so both survive at favicon size. Filled emerald tile
+       keeps contrast on light and dark tabs. Colours = brand primary (globals.css). -->
   <defs>
-    <linearGradient id="tile" x1="0" y1="0" x2="0.35" y2="1">
-      <stop offset="0" stop-color="#10b981"/>
-      <stop offset="1" stop-color="#047857"/>
+    <linearGradient id="t" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0" stop-color="#0B8A5C"/>
+      <stop offset="1" stop-color="#00573A"/>
     </linearGradient>
   </defs>
-
-  <rect width="512" height="512" rx="114" fill="url(#tile)"/>
-
-  <g fill="#ffffff">
-    <!-- finial -->
-    <circle cx="256" cy="122" r="24"/>
-
-    <!-- beam -->
-    <rect x="88" y="152" width="336" height="34" rx="17"/>
-
-    <!-- pan hangers -->
-    <rect x="125" y="182" width="22" height="34" rx="11"/>
-    <rect x="365" y="182" width="22" height="34" rx="11"/>
-
-    <!-- pans: solid bowls, flat across the top -->
-    <path d="M60 214a76 56 0 0 0 152 0Z"/>
-    <path d="M300 214a76 56 0 0 0 152 0Z"/>
-
-    <!-- column -->
-    <rect x="239" y="186" width="34" height="200" rx="8"/>
-
-    <!-- base -->
-    <rect x="148" y="380" width="216" height="38" rx="19"/>
-  </g>
+  <rect width="512" height="512" rx="116" fill="url(#t)"/>
+  <path d="M128 172 L192 380 L256 236 L320 380 L384 172" fill="none" stroke="#FFFFFF" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="256" cy="130" r="25" fill="#FFFFFF"/>
 </svg>
