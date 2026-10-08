@@ -195,6 +195,7 @@ export function MatterFrame({ className }: { className?: string }) {
   return (
     <figure
       ref={rootRef}
+      data-step={step}
       className={cn('matter-frame overflow-hidden rounded-2xl bg-background text-foreground', className)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -230,12 +231,12 @@ export function MatterFrame({ className }: { className?: string }) {
 
       <div aria-hidden className="grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
         {/* Thread */}
-        <div className="flex flex-col gap-2.5 border-b border-border bg-sunken p-3.5 sm:border-e sm:border-b-0">
+        <div className="relative flex flex-col gap-2.5 border-b border-border bg-sunken p-3.5 sm:border-e sm:border-b-0">
           <Reveal on={on(1)} fresh={fresh(1)}>
             <Bubble from="client" time="23:42">{m.thread.c1}</Bubble>
           </Reveal>
           <div className="relative">
-            <Reveal on={replied} fresh={fresh(2)}>
+            <Reveal on={replied} fresh={fresh(2)} className="hide-at-gate">
               <p className={cn('mb-1 text-end text-[11px] text-muted-foreground', urdu)}>{t('mfAiDisclosed')}</p>
               <Bubble from="ai" time="23:42">{m.thread.a1}</Bubble>
             </Reveal>
@@ -245,11 +246,12 @@ export function MatterFrame({ className }: { className?: string }) {
               </div>
             ) : null}
           </div>
-          <Reveal on={replied} delay={on(3) ? 0 : 700}>
+          <Reveal on={replied} delay={on(3) ? 0 : 700} className="hide-at-gate">
             <Bubble from="client" time="23:43">{m.thread.c2}</Bubble>
           </Reveal>
-          <Reveal on={on(7)} fresh={fresh(7)} className="mt-auto">
-            <ApprovalGate demo emphasize={step === LAST && running} meta={t('mfToClient')} className="bg-card/60">
+          {/* Overlays the thread's tail instead of reserving height, so the hero frame stays compact. */}
+          <Reveal on={on(7)} fresh={fresh(7)} className="sm:absolute sm:inset-x-0 sm:bottom-0 sm:z-10 sm:rounded-none sm:bg-gradient-to-t sm:from-sunken sm:from-75% sm:to-transparent sm:px-3 sm:pb-3 sm:pt-10">
+            <ApprovalGate demo emphasize={step === LAST && running} meta={t('mfToClient')} className="bg-card shadow-[var(--shadow-frame)]">
               <span dir="ltr" className="block text-start">{m.thread.draft}</span>
             </ApprovalGate>
           </Reveal>

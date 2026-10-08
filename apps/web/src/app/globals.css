@@ -305,6 +305,12 @@
   from { background-position: 150% 0; }
   to { background-position: -50% 0; }
 }
+/* From sm up the approval gate overlays the thread tail; fade what it covers. */
+@media (min-width: 640px) {
+  .matter-frame[data-step="7"] .hide-at-gate {
+    opacity: 0;
+  }
+}
 .gate-attract {
   animation: wk-attract 1.8s ease-out infinite;
 }
