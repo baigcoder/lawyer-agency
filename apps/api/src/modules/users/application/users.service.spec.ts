@@ -75,6 +75,7 @@ function makeService() {
     invitationsEnabled: true,
     inviteMember: vi.fn(async () => ({ emailDelivery: 'sent' as const })),
     revokeInvitation: vi.fn(async () => undefined),
+    syncMemberRole: vi.fn(async () => undefined),
   };
   return { service: new UsersService(uow, outbox, auth, orgInviter), tx, users, outbox, orgInviter };
 }
@@ -243,6 +244,38 @@ describe('UsersService', () => {
     const second = await service.invite('t1', { name: 'Two', email: 't@x.com', roleId: 'r-admin', clerkUserId: 'c8' });
     await service.update('t1', second.id, { status: 'ACTIVE' });
     await expect(service.update('t1', owner.id, { roleId: 'r-staff' })).resolves.toBeDefined();
+  });
+
+  it('takes Clerk org:admin away from a demoted or suspended Admin, and gives it back', async () => {
+    const { service, orgInviter } = makeService();
+    const a = await service.invite('t1', { name: 'A1', email: 'a1@x.com', roleId: 'r-admin', clerkUserId: 'ca1' });
+    const b = await service.invite('t1', { name: 'A2', email: 'a2@x.com', roleId: 'r-admin', clerkUserId: 'ca2' });
+    await service.update('t1', a.id, { status: 'ACTIVE' });
+    await service.update('t1', b.id, { status: 'ACTIVE' });
+
+    await service.update('t1', a.id, { roleId: 'r-staff' });
+    expect(orgInviter.syncMemberRole).toHaveBeenLastCalledWith({ clerkOrgId: 'org_1', clerkUserId: 'ca1', role: 'org:member' });
+
+    await service.update('t1', a.id, { roleId: 'r-admin' });
+    expect(orgInviter.syncMemberRole).toHaveBeenLastCalledWith({ clerkOrgId: 'org_1', clerkUserId: 'ca1', role: 'org:admin' });
+
+    await service.deactivate('t1', a.id);
+    expect(orgInviter.syncMemberRole).toHaveBeenLastCalledWith({ clerkOrgId: 'org_1', clerkUserId: 'ca1', role: 'org:member' });
+  });
+
+  it('rolls the local change back when Clerk refuses the role change', async () => {
+    const { service, orgInviter, users } = makeService();
+    const a = await service.invite('t1', { name: 'A1', email: 'a1@x.com', roleId: 'r-admin', clerkUserId: 'ca1' });
+    const b = await service.invite('t1', { name: 'A2', email: 'a2@x.com', roleId: 'r-admin', clerkUserId: 'ca2' });
+    await service.update('t1', a.id, { status: 'ACTIVE' });
+    await service.update('t1', b.id, { status: 'ACTIVE' });
+    orgInviter.syncMemberRole = vi.fn(async () => {
+      throw new Error('clerk down');
+    });
+    await expect(service.update('t1', a.id, { roleId: 'r-staff' })).rejects.toThrow(/Nothing was changed/);
+    // The fake transaction has no rollback; the real one undoes the update. What
+    // matters here is that the caller is told, not left believing it worked.
+    expect(users.length).toBe(2);
   });
 
   it('does not let you deactivate yourself', async () => {

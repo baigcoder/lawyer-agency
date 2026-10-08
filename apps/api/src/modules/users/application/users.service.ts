@@ -372,6 +372,9 @@ export class UsersService {
         data,
         include: { role: true },
       });
+      if (input.roleId !== undefined || input.status !== undefined) {
+        await this.syncClerkRole(tx, tenantId, updated);
+      }
       return {
         id: updated.id,
         name: updated.name,
@@ -394,9 +397,38 @@ export class UsersService {
         throw new BadRequestException('You cannot deactivate your own account.');
       }
       await this.assertNotLastAdmin(tx, current);
-      await tx.user.update({ where: { id: userId }, data: { status: 'SUSPENDED' } });
+      const suspended = await tx.user.update({
+        where: { id: userId },
+        data: { status: 'SUSPENDED' },
+        include: { role: true },
+      });
+      await this.syncClerkRole(tx, tenantId, suspended);
       await this.outbox.append(tx, tenantId, DOMAIN_EVENTS.UserDeactivated, { userId });
     });
+  }
+
+  /**
+   * Clerk org admins can invite from Clerk's own UI, and an org admin with no
+   * local row is auto-provisioned as Admin, so the Clerk role must follow the
+   * local one: org:admin only while the user is an active Admin. Runs inside
+   * the caller's transaction, so if Clerk refuses, the local change is rolled
+   * back rather than leaving the two out of step.
+   */
+  private async syncClerkRole(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    user: { clerkUserId: string; status: string; role: { name: string } },
+  ): Promise<void> {
+    if (!this.orgInviter.invitationsEnabled || user.clerkUserId.startsWith('invite_')) return;
+    const tenant = await tx.tenant.findUnique({ where: { id: tenantId }, select: { clerkOrgId: true } });
+    if (!tenant?.clerkOrgId) return;
+    const role = user.status === 'ACTIVE' && user.role.name === 'Admin' ? 'org:admin' : 'org:member';
+    try {
+      await this.orgInviter.syncMemberRole({ clerkOrgId: tenant.clerkOrgId, clerkUserId: user.clerkUserId, role });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Clerk update failed';
+      throw new BadGatewayException(`Could not update their access in Clerk (${detail}). Nothing was changed; try again.`);
+    }
   }
 
   /**
@@ -422,7 +454,12 @@ export class UsersService {
       const current = await tx.user.findFirst({ where: { id: userId } });
       if (!current) throw new NotFoundException('user not found');
       if (current.status === 'ACTIVE') return;
-      await tx.user.update({ where: { id: userId }, data: { status: 'ACTIVE' } });
+      const active = await tx.user.update({
+        where: { id: userId },
+        data: { status: 'ACTIVE' },
+        include: { role: true },
+      });
+      await this.syncClerkRole(tx, tenantId, active);
     });
   }
 }

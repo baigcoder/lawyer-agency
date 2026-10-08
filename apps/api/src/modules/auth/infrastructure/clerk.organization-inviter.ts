@@ -68,7 +68,36 @@ export class ClerkOrganizationInviter implements OrganizationInviter {
   }
 
   async revokeInvitation(input: { clerkOrgId: string; email: string; inviterUserId?: string }): Promise<void> {
-    await this.revokePending(createClerkClient({ secretKey: this.secretKey }), input);
+    const clerk = createClerkClient({ secretKey: this.secretKey });
+    await this.revokePending(clerk, input);
+    // Accepted already: the membership is what grants access, so remove it.
+    const { data } = await clerk.users.getUserList({ emailAddress: [input.email.toLowerCase()], limit: 1 });
+    const user = data[0];
+    if (!user) return;
+    try {
+      await clerk.organizations.deleteOrganizationMembership({ organizationId: input.clerkOrgId, userId: user.id });
+      this.logger.log({ organizationId: input.clerkOrgId }, 'Removed accepted membership of a cancelled invite');
+    } catch (error) {
+      if (!isNotFound(error)) throw error;
+    }
+  }
+
+  async syncMemberRole(input: {
+    clerkOrgId: string;
+    clerkUserId: string;
+    role: 'org:member' | 'org:admin';
+  }): Promise<void> {
+    const clerk = createClerkClient({ secretKey: this.secretKey });
+    try {
+      await clerk.organizations.updateOrganizationMembership({
+        organizationId: input.clerkOrgId,
+        userId: input.clerkUserId,
+        role: input.role,
+      });
+    } catch (error) {
+      // Not a member of the org: there is no Clerk role to take away.
+      if (!isNotFound(error)) throw error;
+    }
   }
 
   private async revokePending(
@@ -100,6 +129,16 @@ export class NoopOrganizationInviter implements OrganizationInviter {
   }
 
   async revokeInvitation(): Promise<void> {}
+
+  async syncMemberRole(): Promise<void> {}
+}
+
+function isNotFound(error: unknown): boolean {
+  const status =
+    typeof error === 'object' && error !== null && 'status' in error
+      ? Number((error as { status: unknown }).status)
+      : undefined;
+  return status === 404 || clerkErrorCodes(error).includes('resource_not_found');
 }
 
 export function isAlreadyOrganizationMember(error: unknown): boolean {

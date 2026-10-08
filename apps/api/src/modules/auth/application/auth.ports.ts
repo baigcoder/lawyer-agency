@@ -41,8 +41,19 @@ export interface OrganizationInviter {
     roleLabel: string;
     inviterUserId?: string;
   }): Promise<OrganizationInviteResult>;
-  /** Withdraw a pending invitation so its email link stops working. */
+  /**
+   * Withdraw an invitation completely: revoke it if still pending, and remove
+   * the org membership if it was already accepted. Leaving an accepted
+   * membership behind let a cancelled Admin invitee sign in later and be
+   * auto-provisioned as Admin.
+   */
   revokeInvitation(input: { clerkOrgId: string; email: string; inviterUserId?: string }): Promise<void>;
+  /**
+   * Mirror the local role onto the Clerk org membership. Clerk org admins can
+   * invite people (who then auto-provision as Admin) from Clerk's own UI, so a
+   * demoted or suspended Admin must lose org:admin there too.
+   */
+  syncMemberRole(input: { clerkOrgId: string; clerkUserId: string; role: 'org:member' | 'org:admin' }): Promise<void>;
 }
 
 export const ORGANIZATION_INVITER = Symbol('ORGANIZATION_INVITER');
