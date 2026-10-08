@@ -16,6 +16,7 @@ import { HandoffBriefView } from '@/components/escalations/handoff-brief-view';
 import { MarketingFooter } from '@/components/marketing-footer';
 import { MarketingHeader } from '@/components/marketing-header';
 import { Section, SectionHeading } from '@/components/marketing-section';
+import { FilmPlayer } from '@/components/film-player';
 import { DEMO_MATTER, MatterFrame, WhatsappGlyph } from '@/components/matter-frame';
 import { Docket, Signal } from '@/components/signal';
 import { Button } from '@/components/ui/button';
@@ -34,6 +35,17 @@ export default function Home() {
 
       <main id="main">
         <Hero />
+
+        {/* ── The film ────────────────────────────────────────────────── */}
+        <Section id="film" tone="stage" labelledBy="film-title" size="sm" innerClassName="py-16 sm:py-24">
+          <div className="mx-auto max-w-[1100px]">
+            <div className="mb-8 flex flex-col gap-4 sm:mb-10 sm:flex-row sm:items-end sm:justify-between">
+              <SectionHeading id="film-title" eyebrow={t('filmEyebrow')} title={t('filmTitle')} urdu={isRtl} className="max-w-xl" />
+              <p className={cn('max-w-sm text-[0.95rem] leading-7 text-muted-foreground', urdu)}>{t('filmLede')}</p>
+            </div>
+            <FilmPlayer src="/video/wakeel-film.mp4" poster="/video/wakeel-film-poster.jpg" />
+          </div>
+        </Section>
 
         {/* ── ACT 01 · The front door ─────────────────────────────────── */}
         <Section id="front-door" labelledBy="act1-title">
@@ -230,7 +242,7 @@ function Hero() {
 
   return (
     <section aria-labelledby="hero-title" className="relative border-b border-border">
-      <div className="mx-auto grid grid-cols-1 max-w-[1320px] gap-12 px-4 pb-16 pt-12 sm:px-6 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] lg:items-center lg:gap-12 xl:gap-16 lg:px-8 lg:pb-24 lg:pt-16">
+      <div className="mx-auto grid grid-cols-1 max-w-[1400px] gap-12 px-4 pb-16 pt-12 sm:px-6 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:items-center lg:gap-12 xl:gap-16 lg:px-8 lg:pb-24 lg:pt-16">
         <div className="reveal-in">
           <p className="docket flex items-center gap-2 text-primary">
             <WhatsappGlyph className="size-3.5" />
