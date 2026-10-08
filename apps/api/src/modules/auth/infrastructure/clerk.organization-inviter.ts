@@ -67,15 +67,19 @@ export class ClerkOrganizationInviter implements OrganizationInviter {
     };
   }
 
-  async revokeInvitation(input: { clerkOrgId: string; email: string; inviterUserId?: string }): Promise<void> {
+  async revokeInvitation(input: {
+    clerkOrgId: string;
+    email: string;
+    inviterUserId?: string;
+    protectedClerkUserIds: string[];
+  }): Promise<void> {
     const clerk = createClerkClient({ secretKey: this.secretKey });
     await this.revokePending(clerk, input);
     // Accepted already: the membership is what grants access, so remove it.
-    const { data } = await clerk.users.getUserList({ emailAddress: [input.email.toLowerCase()], limit: 1 });
-    const user = data[0];
-    if (!user) return;
+    const userId = await this.findInvitee(clerk, input.email, input.protectedClerkUserIds);
+    if (!userId) return;
     try {
-      await clerk.organizations.deleteOrganizationMembership({ organizationId: input.clerkOrgId, userId: user.id });
+      await clerk.organizations.deleteOrganizationMembership({ organizationId: input.clerkOrgId, userId });
       this.logger.log({ organizationId: input.clerkOrgId }, 'Removed accepted membership of a cancelled invite');
     } catch (error) {
       if (!isNotFound(error)) throw error;
@@ -84,20 +88,68 @@ export class ClerkOrganizationInviter implements OrganizationInviter {
 
   async syncMemberRole(input: {
     clerkOrgId: string;
-    clerkUserId: string;
     role: 'org:member' | 'org:admin';
+    clerkUserId?: string;
+    email?: string;
+    protectedClerkUserIds?: string[];
   }): Promise<void> {
     const clerk = createClerkClient({ secretKey: this.secretKey });
+    const email = input.email?.trim().toLowerCase();
+    // A pending invitation carries its own role: an Admin invite demoted
+    // before acceptance would otherwise still join as org:admin.
+    if (email) await this.retargetPending(clerk, input.clerkOrgId, email, input.role);
+    const userId =
+      input.clerkUserId ?? (email ? await this.findInvitee(clerk, email, input.protectedClerkUserIds ?? []) : null);
+    if (!userId) return;
     try {
       await clerk.organizations.updateOrganizationMembership({
         organizationId: input.clerkOrgId,
-        userId: input.clerkUserId,
+        userId,
         role: input.role,
       });
     } catch (error) {
       // Not a member of the org: there is no Clerk role to take away.
       if (!isNotFound(error)) throw error;
     }
+  }
+
+  /**
+   * The Clerk account an invitation email belongs to. Clerk's email filter
+   * also matches secondary addresses, so a plain lookup could pick another
+   * colleague who merely lists that address — and remove or re-role them.
+   * Only the account whose *primary* address it is counts, never one already
+   * bound to another team member, and only when that is unambiguous.
+   */
+  private async findInvitee(
+    clerk: ReturnType<typeof createClerkClient>,
+    email: string,
+    protectedClerkUserIds: string[],
+  ): Promise<string | null> {
+    const wanted = email.trim().toLowerCase();
+    const { data } = await clerk.users.getUserList({ emailAddress: [wanted], limit: 10 });
+    const matches = data.filter(
+      (user) =>
+        user.primaryEmailAddress?.emailAddress.toLowerCase() === wanted && !protectedClerkUserIds.includes(user.id),
+    );
+    return matches.length === 1 ? (matches[0]?.id ?? null) : null;
+  }
+
+  private async retargetPending(
+    clerk: ReturnType<typeof createClerkClient>,
+    clerkOrgId: string,
+    email: string,
+    role: 'org:member' | 'org:admin',
+  ): Promise<void> {
+    const { data } = await clerk.organizations.getOrganizationInvitationList({
+      organizationId: clerkOrgId,
+      status: ['pending'],
+      limit: 100,
+    });
+    const match = data.find((invitation) => invitation.emailAddress.toLowerCase() === email);
+    if (!match || match.role === role) return;
+    await clerk.organizations.revokeOrganizationInvitation({ organizationId: clerkOrgId, invitationId: match.id });
+    // Re-issued with the new role; Clerk emails a fresh link.
+    await clerk.organizations.createOrganizationInvitation(this.toCreateParams({ clerkOrgId, email, role }));
   }
 
   private async revokePending(
