@@ -200,24 +200,42 @@ export function renderFirstTurnDisclosure(
   if (!ctx.isFirstClientTurn) return responseText;
   const vars = buildFirmPromptVariables(ctx);
   const custom = ctx.aiSettings.aiConsentMessage.trim();
-  const template =
-    custom ||
-    (channel === 'voice'
-      ? defaultSpokenDisclosure(language, vars, ctx.aiSettings.aiVoiceGender)
-      : defaultDisclosure(language, vars, {
-          // Match the script the agent just replied in, so the client does not
-          // receive Urdu script and Roman Urdu in the same message.
-          romanUrdu: isRomanUrduReply(language, responseText),
-          voiceGender: ctx.aiSettings.aiVoiceGender,
-          voiceEnabled: ctx.aiSettings.aiVoiceEnabled,
-        }));
-  const disclosure = renderTemplate(template, vars).trim();
-  const body = stripLeadingAiSelfIntros(responseText, disclosure);
-  if (!disclosure) return body;
-  if (!body) return disclosure;
+  const build = (askWhatTheyNeed: boolean) =>
+    renderTemplate(
+      custom ||
+        (channel === 'voice'
+          ? defaultSpokenDisclosure(language, vars, ctx.aiSettings.aiVoiceGender)
+          : defaultDisclosure(language, vars, {
+              // Match the script the agent just replied in, so the client does not
+              // receive Urdu script and Roman Urdu in the same message.
+              romanUrdu: isRomanUrduReply(language, responseText),
+              voiceGender: ctx.aiSettings.aiVoiceGender,
+              voiceEnabled: ctx.aiSettings.aiVoiceEnabled,
+              askWhatTheyNeed,
+            })),
+      vars,
+    ).trim();
+  const full = build(true);
+  let body = stripLeadingAiSelfIntros(responseText, full);
+  if (!full) return body;
+  if (!body) return full;
+  // The reply already answers them. Ending the intro with "tell me what you
+  // need" too asked a client who had just described an arrest what they need.
+  const disclosure = build(false);
   if (alreadyHasDisclosure(body, disclosure)) return body;
-  return channel === 'voice' ? `${disclosure} ${body}` : `${disclosure}\n\n${body}`;
+  // "Wa alaikum assalam" belongs before the intro, not after it.
+  const salam = body.match(LEADING_SALAM)?.[0];
+  if (salam) {
+    body = body.slice(salam.length).trim();
+    body = body.charAt(0).toUpperCase() + body.slice(1);
+  }
+  const lead = salam ? `${salam.trim().replace(/[!,.۔،]+$/, '')}! ` : '';
+  if (!body) return `${lead}${disclosure}`;
+  return channel === 'voice' ? `${lead}${disclosure} ${body}` : `${lead}${disclosure}\n\n${body}`;
 }
+
+const LEADING_SALAM =
+  /^(?:wa\s*alaikum\s*(?:us|as)?\s*sala+m|walaikum\s*(?:us|as)?\s*sala+m|assalamu?\s*alaikum|asalam\s*o\s*alaikum|وعلیکم\s*السلام|السلام\s*علیکم)[!,.۔،]*\s*/i;
 
 export function spokenOwnerName(vars: Record<string, string>): string | null {
   const owner = vars.ownerName?.trim() ?? '';
@@ -259,6 +277,8 @@ export interface DisclosureOptions {
   voiceGender?: 'male' | 'female';
   /** Only promise to answer voice notes when the firm actually speaks back. */
   voiceEnabled?: boolean;
+  /** End with "what do you need?" — only when no reply follows the intro. */
+  askWhatTheyNeed?: boolean;
 }
 
 export function defaultDisclosure(
@@ -269,6 +289,7 @@ export function defaultDisclosure(
   const owner = spokenOwnerName(vars);
   const firm = vars.displayName?.trim() || 'the firm';
   const subject = owner ?? firm;
+  const ask = options.askWhatTheyNeed ?? true;
 
   if (language === 'UR' && options.romanUrdu) {
     // A Roman Urdu client got this line in Urdu script while the agent replied
@@ -280,8 +301,8 @@ export function defaultDisclosure(
       ? `Aap ke messages aur voice notes ka jawab main ${willAnswer}.`
       : `Aap ke messages ka jawab main ${willAnswer}.`;
     return owner
-      ? `Main ${owner} ${of} assistant hoon, khud wakeel nahi. ${handles} Bataiye aap ko kya chahiye?`
-      : `Main ${firm} ${of} assistant hoon, wakeel nahi. ${handles} Bataiye aap ko kya chahiye?`;
+      ? `Main ${owner} ${of} assistant hoon, khud wakeel nahi. ${handles}${ask ? ' Bataiye aap ko kya chahiye?' : ''}`
+      : `Main ${firm} ${of} assistant hoon, wakeel nahi. ${handles}${ask ? ' Bataiye aap ko kya chahiye?' : ''}`;
   }
 
   if (language === 'UR') {
@@ -293,16 +314,16 @@ export function defaultDisclosure(
       ? `آپ کے میسج اور وائس نوٹ کا جواب میں ${willAnswer}۔`
       : `آپ کے میسج کا جواب میں ${willAnswer}۔`;
     return owner
-      ? `میں ${owner} ${of} اسسٹنٹ ہوں، وکیل خود نہیں۔ ${handles} بتائیں آپ کو کیا چاہیے؟`
-      : `میں ${firm} ${of} اسسٹنٹ ہوں، وکیل نہیں۔ ${handles} بتائیں آپ کو کیا چاہیے؟`;
+      ? `میں ${owner} ${of} اسسٹنٹ ہوں، وکیل خود نہیں۔ ${handles}${ask ? ' بتائیں آپ کو کیا چاہیے؟' : ''}`
+      : `میں ${firm} ${of} اسسٹنٹ ہوں، وکیل نہیں۔ ${handles}${ask ? ' بتائیں آپ کو کیا چاہیے؟' : ''}`;
   }
 
   const handles = options.voiceEnabled
     ? "I'll answer your messages and voice notes."
     : "I'll answer your messages.";
   return owner
-    ? `I'm ${subject}'s assistant, not ${owner} the lawyer. ${handles} Tell me how I can help.`
-    : `I'm the assistant for ${subject}, not a lawyer. ${handles} Tell me how I can help.`;
+    ? `I'm ${subject}'s assistant, not ${owner} the lawyer. ${handles}${ask ? ' Tell me how I can help.' : ''}`
+    : `I'm the assistant for ${subject}, not a lawyer. ${handles}${ask ? ' Tell me how I can help.' : ''}`;
 }
 
 export function renderOffTopicRedirect(ctx: AiRunContext, language: Language): string {
