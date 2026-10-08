@@ -12,7 +12,7 @@ export const userSummarySchema = z.object({
 });
 
 export const inviteUserResultSchema = userSummarySchema.extend({
-  emailDelivery: z.enum(['sent', 'skipped']),
+  emailDelivery: z.enum(['sent', 'skipped', 'already_member']),
 });
 
 export const userListSchema = z.array(userSummarySchema);

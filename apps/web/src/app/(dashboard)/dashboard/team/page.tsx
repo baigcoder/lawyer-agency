@@ -82,8 +82,8 @@ function InviteMemberForm() {
   const invite = useMutation({
     mutationFn: (body: z.infer<typeof inviteUserSchema>) =>
       apiRequest('/v1/users', { method: 'POST', body, schema: inviteUserResultSchema }),
-    onSuccess: () => {
-      toast.success(t('invitationSent'));
+    onSuccess: (result) => {
+      toast.success(result.emailDelivery === 'already_member' ? t('inviteAlreadyMember') : t('invitationSent'));
       setName('');
       setEmail('');
       setPhone('');
@@ -186,10 +186,19 @@ function UsersTable({ users, lawyers, canManage }: { users: UserSummary[]; lawye
   const resendInvite = useMutation({
     mutationFn: (userId: string) =>
       apiRequest(`/v1/users/${userId}/resend-invite`, { method: 'POST', schema: inviteUserResultSchema }),
-    onSuccess: () => {
-      toast.success(t('invitationResent'));
+    onSuccess: (result) => {
+      toast.success(result.emailDelivery === 'already_member' ? t('inviteAlreadyMember') : t('invitationResent'));
     },
     onError: (error) => toast.error(error instanceof ApiError ? error.message : t('couldNotResendInvite')),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+
+  const cancelInvite = useMutation({
+    mutationFn: (userId: string) => apiRequest(`/v1/users/${userId}/invite`, { method: 'DELETE' }),
+    onSuccess: () => toast.success(t('inviteCancelled')),
+    onError: (error) => toast.error(error instanceof ApiError ? error.message : t('couldNotCancelInvite')),
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['users'] });
     },
@@ -282,6 +291,19 @@ function UsersTable({ users, lawyers, canManage }: { users: UserSummary[]; lawye
                       <Mail className="h-4 w-4" />
                     )}
                     {t('resendInvite')}
+                  </Button>
+                ) : null}
+                {canManage && user.status === 'INVITED' ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={cancelInvite.isPending}
+                    onClick={() => {
+                      if (window.confirm(t('confirmCancelInvite').replace('{email}', user.email))) cancelInvite.mutate(user.id);
+                    }}
+                  >
+                    {t('cancelInvite')}
                   </Button>
                 ) : null}
                 {canManage && user.status === 'ACTIVE' && user.roleName === 'Lawyer' && !lawyerUserIds.has(user.id) ? (

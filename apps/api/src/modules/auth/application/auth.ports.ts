@@ -23,8 +23,11 @@ export interface TokenVerifier {
 export const TOKEN_VERIFIER = Symbol('TOKEN_VERIFIER');
 
 export interface OrganizationInviteResult {
-  /** Clerk emails the invitee; 'skipped' only in the local no-Clerk path. */
-  emailDelivery: 'sent' | 'skipped';
+  /**
+   * Clerk emails the invitee; 'skipped' only in the local no-Clerk path;
+   * 'already_member' when they already joined the org and only need to sign in.
+   */
+  emailDelivery: 'sent' | 'skipped' | 'already_member';
 }
 
 export interface OrganizationInviter {
@@ -38,6 +41,8 @@ export interface OrganizationInviter {
     roleLabel: string;
     inviterUserId?: string;
   }): Promise<OrganizationInviteResult>;
+  /** Withdraw a pending invitation so its email link stops working. */
+  revokeInvitation(input: { clerkOrgId: string; email: string; inviterUserId?: string }): Promise<void>;
 }
 
 export const ORGANIZATION_INVITER = Symbol('ORGANIZATION_INVITER');
