@@ -35,7 +35,7 @@ const stateLabel: Record<DemoConversation['state'], TranslationKey> = {
 /** Inbox — list · timeline · matter context. Mobile is single-task. */
 export function InboxView() {
   const { t } = useLanguage();
-  const { conversations, selectedConversation, setSelectedConversation, markRead, arrivedId } = useDemo();
+  const { conversations, selectedConversation, setSelectedConversation, markRead, arrivedId, typing } = useDemo();
   const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
   const [contextOpen, setContextOpen] = useState(false);
@@ -48,6 +48,11 @@ export function InboxView() {
   }, [conversations, filter, query]);
 
   const active = conversations.find((c) => c.id === selectedConversation) ?? null;
+
+  // A message landing in the open thread is read on arrival.
+  useEffect(() => {
+    if (active?.unread) markRead(active.id);
+  }, [active, markRead]);
 
   // Desktop opens on the most urgent conversation; mobile starts at the list.
   useEffect(() => {
@@ -122,8 +127,14 @@ export function InboxView() {
                       <span className={cn('shrink-0 font-mono text-[11px] tabular-nums', c.unread ? 'text-primary' : 'text-muted-foreground')}>{c.time}</span>
                     </span>
                     <span dir="auto" className={cn('mt-0.5 flex items-center gap-1 truncate text-[12.5px]', c.unread ? 'text-foreground/85' : 'text-muted-foreground')}>
-                      {c.preview.startsWith('Voice note') ? <Mic className="size-3 shrink-0" aria-hidden /> : null}
-                      <span className="truncate">{c.preview}</span>
+                      {typing?.id === c.id ? (
+                        <span className="truncate text-primary">{typing.who === 'ai' ? t('demoAiWriting') : t('demoTyping')}</span>
+                      ) : (
+                        <>
+                          {c.preview.startsWith('Voice note') ? <Mic className="size-3 shrink-0" aria-hidden /> : null}
+                          <span className="truncate">{c.preview}</span>
+                        </>
+                      )}
                     </span>
                     <span className="mt-1.5 flex items-center gap-2">
                       <Docket items={[c.caseRef, c.assignee?.split(' ')[0]]} className="min-w-0 flex-1 truncate" />
@@ -190,17 +201,20 @@ function Thread({
   stateKey: TranslationKey;
 }) {
   const { t } = useLanguage();
-  const { approveDraft, sendMessage, go } = useDemo();
+  const { approveDraft, sendMessage, go, typing } = useDemo();
   const [mode, setMode] = useState<'reply' | 'note'>('reply');
   const [text, setText] = useState('');
   const [editing, setEditing] = useState(false);
-  const [draftText, setDraftText] = useState(c.draft ?? '');
+  // A draft can arrive live while the thread is open, so only edits are state.
+  const [draftEdit, setDraftText] = useState<string | null>(null);
+  const draftText = draftEdit ?? c.draft ?? '';
+  const typingHere = typing?.id === c.id ? typing.who : null;
   const endRef = useRef<HTMLDivElement>(null);
   const [windowEnd] = useState(() => Date.now() + (23 * 3600 + 14 * 60) * 1000);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
-  }, [c.id, c.messages.length]);
+  }, [c.id, c.messages.length, typingHere, c.draft]);
 
   const submit = () => {
     const body = text.trim();
@@ -255,6 +269,23 @@ function Thread({
             status={m.from === 'lawyer' || m.from === 'ai' ? <CheckCheck className="size-3 text-primary" aria-hidden /> : undefined}
           />
         ))}
+        {typingHere ? (
+          <div className={cn('flex', typingHere === 'ai' && 'justify-end')} aria-live="polite">
+            <span
+              className={cn(
+                'flex items-center gap-2 rounded-xl px-3 py-2.5 ring-1',
+                typingHere === 'ai' ? 'rounded-se-sm bg-[var(--wa-firm)] ring-primary/15' : 'rounded-ss-sm bg-card ring-border',
+              )}
+            >
+              <span className="flex gap-1">
+                {[0, 1, 2].map((i) => (
+                  <span key={i} className={cn('typing-dot size-1.5 rounded-full', typingHere === 'ai' ? 'bg-primary' : 'bg-muted-foreground')} style={{ animationDelay: `${i * 160}ms` }} />
+                ))}
+              </span>
+              <span className="text-[11px] text-muted-foreground">{typingHere === 'ai' ? t('demoAiWriting') : t('demoTyping')}</span>
+            </span>
+          </div>
+        ) : null}
         {c.draft ? (
           <div className="ms-auto max-w-[min(34rem,92%)]">
             <ApprovalGate

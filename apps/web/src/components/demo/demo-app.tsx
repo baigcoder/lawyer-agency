@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { DemoContext, type DemoContextValue } from '@/components/demo/demo-context';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -16,13 +16,19 @@ import { WakeelMonogram } from '@/components/wakeel-monogram';
 import { PersonAvatar } from '@/components/workspace/panel';
 import { dashboardNavSections, type DashboardView } from '@/lib/dashboard-nav';
 import {
+  ACTIVITY,
   CONVERSATIONS,
   ESCALATIONS,
   FIRM,
   INCOMING,
+  INCOMING_URGENT,
+  LIVE_ESCALATION,
   PAYMENTS,
+  formatPkr,
+  type DemoActivity,
   type DemoConversation,
   type DemoEscalation,
+  type DemoMessage,
   type DemoPayment,
 } from '@/lib/demo-workspace';
 import { useLanguage } from '@/lib/language';
@@ -31,8 +37,6 @@ import { cn } from '@/lib/utils';
 
 const SOUND_KEY = 'wakeel-demo-sound';
 const BOOT_KEY = 'wakeel-demo-booted';
-const INCOMING_AFTER_MS = 9000;
-const AUTO_REPLY_AFTER_MS = 3500;
 
 function noopSubscribe() {
   return () => {};
@@ -79,6 +83,8 @@ export function DemoApp() {
   const [payments, setPayments] = useState<DemoPayment[]>(PAYMENTS);
   const [focusCase, setFocusCase] = useState<string | null>(null);
   const [arrivedId, setArrivedId] = useState<string | null>(null);
+  const [typing, setTyping] = useState<DemoContextValue['typing']>(null);
+  const [activity, setActivity] = useState<DemoActivity[]>(ACTIVITY);
 
   const finishBoot = useCallback(() => {
     setBootedNow(true);
@@ -110,45 +116,116 @@ export function DemoApp() {
     window.scrollTo({ top: 0 });
   }, []);
 
-  // Live: a new WhatsApp enquiry arrives, then Wakeel answers it.
+  // Live: a scripted few minutes of a real chamber — enquiries arrive and are
+  // typed back to, a matter opens, a deadline escalates, a fee proof lands and
+  // a colleague claims work. Every beat guards on current state, so a visitor
+  // acting first (approving, claiming, verifying) is never overwritten.
+  const escalationsRef = useRef(escalations);
+  useEffect(() => {
+    escalationsRef.current = escalations;
+  }, [escalations]);
+
   useEffect(() => {
     if (!booted) return;
-    const arrive = window.setTimeout(() => {
-      setConversations((list) => (list.some((c) => c.id === INCOMING.id) ? list : [INCOMING, ...list]));
-      setArrivedId(INCOMING.id);
-      play('message');
-      toast(t('demoToastNewTitle'), {
-        description: `${INCOMING.client} · ${INCOMING.matter}`,
-        action: { label: t('demoOpen'), onClick: () => go('inbox', { conversation: INCOMING.id }) },
+    const log = (what: string, who: string, source: string) =>
+      setActivity((list) => [{ id: `live-${list.length}`, time: 'now', what, who, source }, ...list]);
+    /** Update one conversation and float it to the top, like WhatsApp. */
+    const bump = (id: string, fn: (c: DemoConversation) => DemoConversation) =>
+      setConversations((list) => {
+        const c = list.find((x) => x.id === id);
+        return c ? [fn(c), ...list.filter((x) => x.id !== id)] : list;
       });
-    }, INCOMING_AFTER_MS);
-    const reply = window.setTimeout(() => {
-      setConversations((list) =>
-        list.map((c) =>
-          c.id === INCOMING.id && c.messages.length === 1
-            ? {
-                ...c,
-                preview: 'Ji, hum Family Court Lahore mein khula ke maamlaat lete hain…',
-                messages: [
-                  ...c.messages,
-                  {
-                    id: 'z2',
-                    from: 'ai',
-                    time: 'now',
-                    meta: 'Approved intake question',
-                    body: 'Assalam o alaikum. Main Al-Madad Law ka AI intake assistant hoon — qanooni mashwara nahi deta. Ji, hum Family Court Lahore mein khula ke maamlaat lete hain. Aap ka naam aur shehar bata dein, main aap ki baat Hira Saleem sahiba tak pohancha deta hoon.',
-                  },
-                ],
-              }
-            : c,
-        ),
-      );
-    }, INCOMING_AFTER_MS + AUTO_REPLY_AFTER_MS);
-    return () => {
-      window.clearTimeout(arrive);
-      window.clearTimeout(reply);
-    };
-    // Run once per boot; `play`/`t` changes must not re-trigger the arrival.
+    const inbound = (id: string, message: DemoMessage, preview: string) =>
+      bump(id, (c) => ({ ...c, unread: c.unread + 1, time: 'now', preview, messages: [...c.messages, message] }));
+
+    const beats: Array<[number, () => void]> = [
+      [8000, () => {
+        setConversations((list) => (list.some((c) => c.id === INCOMING.id) ? list : [INCOMING, ...list]));
+        setArrivedId(INCOMING.id);
+        play('message');
+        toast(t('demoToastNewTitle'), {
+          description: `${INCOMING.client} · ${INCOMING.matter}`,
+          action: { label: t('demoOpen'), onClick: () => go('inbox', { conversation: INCOMING.id }) },
+        });
+      }],
+      [9600, () => setTyping({ id: INCOMING.id, who: 'ai' })],
+      [12000, () => {
+        setTyping(null);
+        bump(INCOMING.id, (c) => ({
+          ...c,
+          preview: 'Ji, hum Family Court Lahore mein khula ke maamlaat lete hain…',
+          messages: [...c.messages, {
+            id: 'z2', from: 'ai', time: 'now', meta: 'Approved intake question',
+            body: 'Assalam o alaikum. Main Al-Madad Law ka AI intake assistant hoon — qanooni mashwara nahi deta. Ji, hum Family Court Lahore mein khula ke maamlaat lete hain. Aap ka naam aur shehar bata dein, main aap ki baat Hira Saleem sahiba tak pohancha deta hoon.',
+          }],
+        }));
+        log('Answered khula enquiry, asked name & city', INCOMING.client, 'FAQ · Family');
+      }],
+      [15500, () => setTyping({ id: INCOMING.id, who: 'client' })],
+      [19000, () => {
+        setTyping(null);
+        inbound(INCOMING.id, { id: 'z3', from: 'client', time: 'now', body: 'Zainab Malik, Lahore. Shaadi ko 5 saal ho gaye, 2 bachay hain. Husband 8 mahine se kharcha nahi de raha.' }, 'Zainab Malik, Lahore. Shaadi ko 5 saal ho gaye…');
+        play('message');
+      }],
+      [21500, () => {
+        bump(INCOMING.id, (c) => ({
+          ...c,
+          state: 'HUMAN_REQUIRED',
+          caseRef: 'WK-1049',
+          assignee: 'Hira Saleem',
+          messages: [...c.messages, { id: 'z4', from: 'system', time: 'now', body: 'Matter WK-1049 opened · facts extracted · assigned to Hira Saleem' }],
+          draft: 'Shukriya Zainab sahiba. Aap ka maamla WK-1049 ke tor par darj ho gaya hai aur Hira Saleem sahiba ise dekh rahi hain. Baraye meharbani nikah nama ki copy aur apna CNIC yahan bhej dein.',
+        }));
+        log('Opened WK-1049, drafted document request for approval', INCOMING.client, 'Intake');
+        play('tick');
+        toast(t('demoToastDraftTitle'), {
+          description: `${INCOMING.client} · WK-1049 · Hira Saleem`,
+          action: { label: t('demoOpen'), onClick: () => go('inbox', { conversation: INCOMING.id }) },
+        });
+      }],
+      [28000, () => {
+        inbound('c-ahmed', { id: 'a6', from: 'client', kind: 'document', time: 'now', body: 'FIR ki copy bhej di hai.', meta: 'FIR_412-26_PS_Gulberg.pdf · T3 · kept in-house' }, 'FIR ki copy bhej di hai.');
+        play('message');
+        log('Filed FIR copy to WK-1042 — read in-house, not sent to third-party AI', 'Ahmed Raza', 'Document · T3');
+        toast(t('demoToastDocTitle'), {
+          description: 'Ahmed Raza · WK-1042 · FIR copy',
+          action: { label: t('demoOpen'), onClick: () => go('inbox', { conversation: 'c-ahmed' }) },
+        });
+      }],
+      [36000, () => {
+        setConversations((list) => (list.some((c) => c.id === INCOMING_URGENT.id) ? list : [INCOMING_URGENT, ...list]));
+        setEscalations((list) => (list.some((e) => e.id === LIVE_ESCALATION.id) ? list : [{ ...LIVE_ESCALATION, deadline: Date.now() + LIVE_ESCALATION.slaSeconds * 1000 }, ...list]));
+        setArrivedId(INCOMING_URGENT.id);
+        play('alert');
+        log('Stopped automation — deadline tomorrow 10:00', INCOMING_URGENT.client, 'Safety rule');
+        toast.error(t('demoToastEscTitle'), {
+          description: `${INCOMING_URGENT.client} · ${t('escTriggerIMMINENT_DEADLINE')} · SLA 15:00`,
+          action: { label: t('demoOpen'), onClick: () => go('escalations', { escalation: LIVE_ESCALATION.id }) },
+        });
+      }],
+      [45000, () => {
+        inbound('c-farah', { id: 'f3', from: 'client', kind: 'image', time: 'now', body: 'Doosri qist JazzCash se bhej di hai.', meta: 'jazzcash_receipt.jpg' }, 'Doosri qist JazzCash se bhej di hai.');
+        setPayments((list) => list.map((p) => (p.id === 'p4' && p.status === 'REQUESTED' ? { ...p, status: 'PENDING', overdue: false, date: 'now' } : p)));
+        play('message');
+        log('Matched JazzCash receipt to WK-1046 instalment', 'Farah Raza', 'Payments');
+        toast(t('demoToastProofTitle'), {
+          description: `Farah Raza · ${formatPkr(30000)} · JazzCash`,
+          action: { label: t('demoOpen'), onClick: () => go('payments') },
+        });
+      }],
+      [53000, () => {
+        // A colleague claims it — unless the visitor already did.
+        if (escalationsRef.current.find((e) => e.id === 'e2')?.status !== 'OPEN') return;
+        setEscalations((list) => list.map((e) => (e.id === 'e2' ? { ...e, status: 'ACKNOWLEDGED', assignee: 'Usman Tariq' } : e)));
+        play('tick');
+        log('Usman Tariq claimed the escalation — client told a lawyer is on it', 'Bilal Hussain', 'Team');
+        toast(`Usman Tariq ${t('demoToastTeamClaim')}`, { description: 'Bilal Hussain · WK-1037' });
+      }],
+      [60000, () => log('Sent hearing reminder for Tue 14 Oct, 10:00', 'Farah Raza', 'Template · hearing_reminder')],
+    ];
+    const timers = beats.map(([at, run]) => window.setTimeout(run, at));
+    return () => timers.forEach((id) => window.clearTimeout(id));
+    // Run once per boot; `play`/`t`/`go` changes must not restart the script.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booted]);
 
@@ -234,8 +311,10 @@ export function DemoApp() {
       setFocusCase,
       play,
       arrivedId,
+      typing,
+      activity,
     }),
-    [view, go, conversations, selectedConversation, markRead, approveDraft, sendMessage, escalations, selectedEscalation, acknowledge, resolve, payments, verifyPayment, focusCase, play, arrivedId],
+    [view, go, conversations, selectedConversation, markRead, approveDraft, sendMessage, escalations, selectedEscalation, acknowledge, resolve, payments, verifyPayment, focusCase, play, arrivedId, typing, activity],
   );
 
   const soundToggle = (
