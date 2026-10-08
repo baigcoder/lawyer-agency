@@ -3,65 +3,58 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Briefcase,
-  Landmark,
-  MessageSquare,
-  Search,
-  X,
-} from 'lucide-react';
+import { MessageSquareText, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { DocumentRequestsCard } from '@/components/document-requests-card';
 import { PageHeader } from '@/components/page-header';
+import { Docket, Signal, SignalDot, type SignalLevel } from '@/components/signal';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Panel } from '@/components/workspace/panel';
 import { apiRequest, ApiError } from '@/lib/api-client';
+import { factLabel } from '@/lib/format';
 import { useLanguage } from '@/lib/language';
 import { caseListSchema, type CaseDto } from '@/lib/schemas/case';
-import { DocumentRequestsCard } from '@/components/document-requests-card';
+import type { TranslationKey } from '@/lib/translations';
+import { cn } from '@/lib/utils';
 
-const ALL_STATUSES = ['ALL', 'IN_COURT', 'ENGAGED', 'CONSULTATION', 'LEAD', 'CLOSED'] as const;
-type StatusFilter = (typeof ALL_STATUSES)[number];
+const STAGES: CaseDto['status'][] = ['LEAD', 'CONSULTATION', 'ENGAGED', 'IN_COURT', 'CLOSED', 'ARCHIVED'];
+const FILTERS = ['ALL', 'IN_COURT', 'ENGAGED', 'CONSULTATION', 'LEAD', 'CLOSED'] as const;
+type StatusFilter = (typeof FILTERS)[number];
 
-const statusVariant: Record<CaseDto['status'], 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  LEAD: 'secondary',
-  CONSULTATION: 'outline',
-  ENGAGED: 'default',
-  IN_COURT: 'default',
-  CLOSED: 'secondary',
-  ARCHIVED: 'outline',
+const statusKey: Record<CaseDto['status'], TranslationKey> = {
+  LEAD: 'caseStatusLEAD',
+  CONSULTATION: 'caseStatusCONSULTATION',
+  ENGAGED: 'caseStatusENGAGED',
+  IN_COURT: 'caseStatusIN_COURT',
+  CLOSED: 'caseStatusCLOSED',
+  ARCHIVED: 'caseStatusARCHIVED',
 };
 
-function urgencyBadge(urgency: CaseDto['urgency']) {
-  switch (urgency) {
-    case 'CRITICAL':
-      return <Badge variant="destructive" className="text-[10px] py-0 h-4 uppercase">Critical</Badge>;
-    case 'HIGH':
-      return <Badge variant="outline" className="text-[10px] py-0 h-4 border-amber-500/40 text-amber-600 dark:text-amber-400 uppercase">High</Badge>;
-    case 'NORMAL':
-      return <span className="text-[11px] text-muted-foreground">Normal</span>;
-    default:
-      return <span className="text-[11px] text-muted-foreground/70">Low</span>;
-  }
+const urgencyKey: Record<CaseDto['urgency'], TranslationKey> = {
+  CRITICAL: 'urgCRITICAL',
+  HIGH: 'urgHIGH',
+  NORMAL: 'urgNORMAL',
+  LOW: 'urgLOW',
+};
+
+function urgencyLevel(u: CaseDto['urgency']): SignalLevel {
+  return u === 'CRITICAL' ? 'critical' : u === 'HIGH' ? 'urgent' : u === 'NORMAL' ? 'routine' : 'info';
 }
 
+function fmtDate(d: Date) {
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+/** Cases as a register of legal dossiers — the matter reference leads. */
 export default function CasesPage() {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [search, setSearch] = useState('');
-  const [selectedCase, setSelectedCase] = useState<CaseDto | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const query = useQuery({
     queryKey: ['cases', statusFilter === 'ALL' ? 'all' : statusFilter],
@@ -73,9 +66,7 @@ export default function CasesPage() {
 
   const filtered = useMemo(() => {
     let rows = query.data ?? [];
-    if (statusFilter !== 'ALL') {
-      rows = rows.filter((c) => c.status === statusFilter);
-    }
+    if (statusFilter !== 'ALL') rows = rows.filter((c) => c.status === statusFilter);
     if (search.trim()) {
       const q = search.toLowerCase();
       rows = rows.filter(
@@ -92,273 +83,206 @@ export default function CasesPage() {
     mutationFn: ({ id, to }: { id: string; to: CaseDto['status'] }) =>
       apiRequest(`/v1/cases/${id}/status`, { method: 'POST', body: { to } }),
     onSuccess: () => {
-      toast.success('Case status updated');
+      toast.success(t('caseStageUpdated'));
       void queryClient.invalidateQueries({ queryKey: ['cases'] });
     },
-    onError: (error) => toast.error(error instanceof ApiError ? error.message : 'Could not update status'),
+    onError: (error) => toast.error(error instanceof ApiError ? error.message : t('caseStageFailed')),
   });
 
-  const allCases = query.data ?? [];
-  const inCourtCount = allCases.filter((c) => c.status === 'IN_COURT').length;
-  const engagedCount = allCases.filter((c) => c.status === 'ENGAGED').length;
-  const leadCount = allCases.filter((c) => c.status === 'LEAD').length;
+  const all = query.data ?? [];
+  const openCount = all.filter((c) => c.status !== 'CLOSED' && c.status !== 'ARCHIVED').length;
+  const active = all.find((c) => c.id === selectedId) ?? null;
+  const cols = active
+    ? 'lg:grid-cols-[6.5rem_minmax(0,2fr)_7rem_6rem_7rem] xl:grid-cols-[6.5rem_minmax(0,1fr)_7rem]'
+    : 'lg:grid-cols-[6.5rem_minmax(0,2fr)_7rem_6rem_7rem]';
+  const wide = active ? 'xl:hidden' : '';
 
   return (
-    <div className="space-y-6 max-w-6xl">
+    <div>
       <PageHeader
+        eyebrow={`${openCount} ${t('demoOpenMatters')} · ${all.length} ${t('caseTotal')}`}
         title={t('cases')}
-        description="Active legal matters, litigation diary, client files, and procedural status."
-        icon={Briefcase}
+        description={t('demoCasesLede')}
       />
 
-      {/* Metrics overview */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="rounded-lg border border-border/80 bg-card p-3 shadow-2xs">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Total Matters
-          </span>
-          <p className="mt-1 text-2xl font-bold tracking-tight text-foreground">{allCases.length}</p>
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div role="tablist" aria-label={t('cases')} className="flex gap-1 overflow-x-auto [scrollbar-width:none]">
+          {FILTERS.map((f) => (
+            <button
+              key={f}
+              role="tab"
+              type="button"
+              aria-selected={statusFilter === f}
+              onClick={() => setStatusFilter(f)}
+              className={cn(
+                'flex shrink-0 items-center gap-2 rounded-lg px-3 py-1.5 text-[13px] transition-colors',
+                statusFilter === f ? 'bg-card font-medium shadow-xs ring-1 ring-border' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+              )}
+            >
+              {f === 'ALL' ? t('demoAllMatters') : t(statusKey[f])}
+              <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                {f === 'ALL' ? all.length : all.filter((c) => c.status === f).length}
+              </span>
+            </button>
+          ))}
         </div>
-        <div className="rounded-lg border border-border/80 bg-card p-3 shadow-2xs">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-            <Landmark className="h-3 w-3 text-primary" />
-            In Court / Trial
-          </span>
-          <p className="mt-1 text-2xl font-bold tracking-tight text-primary">{inCourtCount}</p>
-        </div>
-        <div className="rounded-lg border border-border/80 bg-card p-3 shadow-2xs">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Active Retainers
-          </span>
-          <p className="mt-1 text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">{engagedCount}</p>
-        </div>
-        <div className="rounded-lg border border-border/80 bg-card p-3 shadow-2xs">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Qualified Leads
-          </span>
-          <p className="mt-1 text-2xl font-bold tracking-tight text-muted-foreground">{leadCount}</p>
-        </div>
-      </div>
-
-      {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute start-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <div className="relative sm:w-64">
+          <Search className="pointer-events-none absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
           <Input
-            placeholder="Search reference, matter type, summary…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-8 text-xs ps-8 border-border/80 bg-card/60"
+            placeholder={t('caseSearch')}
+            aria-label={t('caseSearch')}
+            className="h-8 ps-8 text-[13px]"
           />
-        </div>
-
-        <div className="flex flex-wrap gap-1.5 overflow-x-auto">
-          {ALL_STATUSES.map((s) => {
-            const count = s === 'ALL' ? allCases.length : allCases.filter((c) => c.status === s).length;
-            return (
-              <Button
-                key={s}
-                type="button"
-                size="sm"
-                variant={statusFilter === s ? 'default' : 'outline'}
-                onClick={() => setStatusFilter(s)}
-                className="h-8 text-xs px-2.5"
-              >
-                {s === 'ALL' ? 'All Matters' : s.replace('_', ' ')}
-                <span className="ml-1.5 opacity-60 tabular-nums">({count})</span>
-              </Button>
-            );
-          })}
         </div>
       </div>
 
-      {/* Main Table Card */}
-      <Card className="border-border/80 shadow-2xs overflow-hidden">
-        <CardHeader className="py-3 px-4 border-b border-border/60 bg-muted/20">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-semibold text-foreground">
-              Matter Docket ({filtered.length})
-            </CardTitle>
-            <span className="text-[11px] text-muted-foreground">
-              Click any row to view full matter dossier &amp; intake details
-            </span>
+      <div className={cn('grid grid-cols-1 gap-4', active && 'xl:grid-cols-[minmax(0,1fr)_420px]')}>
+        <Panel bodyClassName="divide-y divide-border">
+          <div className={cn('hidden gap-4 bg-sunken/70 px-4 py-2 lg:grid', cols)}>
+            {[t('tlRef'), t('mfMatter'), t('demoStatus'), t('caseUrgency'), t('demoOpened')].map((h, i) => (
+              <span key={h} className={cn('docket text-muted-foreground', i >= 3 && wide)}>
+                {h}
+              </span>
+            ))}
           </div>
-        </CardHeader>
-
-        <CardContent className="p-0">
-          {query.isPending && (
-            <div className="p-4 space-y-2" aria-busy="true">
+          {query.isPending ? (
+            <div className="space-y-2 p-3" aria-busy="true">
               {Array.from({ length: 5 }, (_, i) => (
-                <Skeleton key={i} className="h-10 w-full rounded" />
+                <Skeleton key={i} className="h-11 w-full" />
               ))}
             </div>
-          )}
-
-          {query.isError && (
-            <div role="alert" className="p-4 text-xs text-destructive">
-              Couldn&apos;t load cases: {query.error.message}
+          ) : null}
+          {query.isError ? (
+            <div role="alert" className="flex items-center justify-between gap-3 px-4 py-4">
+              <p className="text-sm">{query.error instanceof ApiError ? query.error.message : t('caseLoadFailed')}</p>
+              <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
+                {t('inboxTryAgain')}
+              </Button>
             </div>
-          )}
-
-          {query.isSuccess && filtered.length === 0 && (
-            <div className="p-12 text-center text-xs text-muted-foreground space-y-2">
-              <Briefcase className="h-8 w-8 mx-auto text-muted-foreground/50" />
-              <p className="font-semibold text-foreground">No matters found</p>
-              <p className="max-w-sm mx-auto">
-                No active legal files match your filter. Convert conversations from Inbox or create a case from qualified leads.
-              </p>
+          ) : null}
+          {query.isSuccess && filtered.length === 0 ? (
+            <div className="px-4 py-12 text-center">
+              <p className="font-display text-2xl">{t('caseEmptyTitle')}</p>
+              <p className="mx-auto mt-2 max-w-sm text-[13px] text-muted-foreground">{t('caseEmptyDesc')}</p>
             </div>
-          )}
+          ) : null}
+          {filtered.map((c) => {
+            const selected = c.id === selectedId;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setSelectedId(selected ? null : c.id)}
+                aria-expanded={selected}
+                className={cn(
+                  'grid w-full grid-cols-1 gap-1 px-4 py-3 text-start transition-colors lg:items-center lg:gap-4',
+                  cols,
+                  selected ? 'bg-accent/45' : 'hover:bg-muted/40',
+                )}
+              >
+                <span className="flex items-center gap-2 font-mono text-[13px] font-medium">
+                  <SignalDot level={urgencyLevel(c.urgency)} />
+                  {c.reference}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-[13.5px] font-medium">{c.matterType}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{c.summary ?? t('caseViaWhatsapp')}</span>
+                </span>
+                <span className="max-lg:hidden">
+                  <span className="docket text-foreground/80">{t(statusKey[c.status])}</span>
+                </span>
+                <span className={cn('max-lg:hidden', wide)}>
+                  <Signal level={urgencyLevel(c.urgency)}>{t(urgencyKey[c.urgency])}</Signal>
+                </span>
+                <span className={cn('font-mono text-[12.5px] tabular-nums text-muted-foreground max-lg:hidden', wide)}>
+                  {fmtDate(c.openedAt)}
+                </span>
+                <Docket className="lg:hidden" items={[t(statusKey[c.status]), t(urgencyKey[c.urgency]), fmtDate(c.openedAt)]} />
+              </button>
+            );
+          })}
+        </Panel>
 
-          {query.isSuccess && filtered.length > 0 && (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-[140px] text-xs font-semibold">Reference</TableHead>
-                    <TableHead className="text-xs font-semibold">Practice Area</TableHead>
-                    <TableHead className="text-xs font-semibold">Status</TableHead>
-                    <TableHead className="text-xs font-semibold">Urgency</TableHead>
-                    <TableHead className="text-xs font-semibold">Opened Date</TableHead>
-                    <TableHead className="text-xs font-semibold">Summary</TableHead>
-                    <TableHead className="text-right text-xs font-semibold w-[160px]">Change Stage</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.map((row) => (
-                    <TableRow
-                      key={row.id}
-                      className="cursor-pointer transition-colors hover:bg-muted/50"
-                      onClick={() => setSelectedCase(row)}
-                    >
-                      <TableCell className="font-mono text-xs font-bold text-foreground">
-                        {row.reference}
-                      </TableCell>
-                      <TableCell className="text-xs font-medium text-foreground">
-                        {row.matterType}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={statusVariant[row.status]} className="text-[10px] py-0 h-4">
-                          {row.status.replace('_', ' ')}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{urgencyBadge(row.urgency)}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground tabular-nums">
-                        {row.openedAt.toLocaleDateString(undefined, {
-                          day: 'numeric',
-                          month: 'short',
-                          year: 'numeric',
-                        })}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground max-w-xs truncate">
-                        {row.summary ?? 'Intake via WhatsApp'}
-                      </TableCell>
-                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                        <Select
-                          value={row.status}
-                          onValueChange={(v) => v && transition.mutate({ id: row.id, to: v as CaseDto['status'] })}
-                          disabled={transition.isPending}
-                        >
-                          <SelectTrigger aria-label="Change stage" className="ml-auto h-7 w-32 text-xs border-border/80">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent align="end">
-                            {ALL_STATUSES.filter((s) => s !== 'ALL').map((s) => (
-                              <SelectItem key={s} value={s} className="text-xs">
-                                {s.replace('_', ' ')}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+        {active ? (
+          <aside
+            aria-label={`${t('demoDossier')} ${active.reference}`}
+            className="reveal-in fixed inset-0 z-50 overflow-y-auto bg-background xl:sticky xl:inset-auto xl:top-20 xl:z-auto xl:max-h-[calc(100svh-7rem)] xl:rounded-xl xl:bg-card xl:ring-1 xl:ring-border"
+          >
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-inherit px-5 py-3">
+              <Docket items={[t('demoDossier'), active.reference]} />
+              <Button variant="ghost" size="icon-sm" aria-label={t('close')} onClick={() => setSelectedId(null)}>
+                <X aria-hidden />
+              </Button>
             </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Case Details Slide-over / Modal */}
-      {selectedCase && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-          <div role="dialog" aria-modal="true" aria-labelledby="case-dialog-title" className="w-full max-w-xl rounded-xl border border-border/80 bg-card p-5 shadow-lg space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-start justify-between border-b border-border/60 pb-3">
+            <div className="space-y-6 p-5">
               <div>
-                <div className="flex items-center gap-2">
-                  <h3 id="case-dialog-title" className="font-mono text-base font-bold text-foreground">
-                    {selectedCase.reference}
-                  </h3>
-                  <Badge variant={statusVariant[selectedCase.status]}>
-                    {selectedCase.status.replace('_', ' ')}
-                  </Badge>
-                </div>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {selectedCase.matterType} · Opened {selectedCase.openedAt.toLocaleDateString()}
+                <Signal level={urgencyLevel(active.urgency)}>
+                  {t(statusKey[active.status])} · {t(urgencyKey[active.urgency])}
+                </Signal>
+                <h2 className="mt-2 font-display text-[1.75rem] leading-[1.1]">{active.matterType}</h2>
+                <p className="mt-2 font-mono text-xs text-muted-foreground">
+                  {t('demoOpened')} {fmtDate(active.openedAt)}
+                  {active.closedAt ? ` · ${t('caseStatusCLOSED')} ${fmtDate(active.closedAt)}` : ''}
                 </p>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                onClick={() => setSelectedCase(null)}
-                aria-label="Close dialog"
-              >
-                <X className="h-4 w-4" />
+
+              {active.summary ? (
+                <section>
+                  <h3 className="docket mb-1.5 text-muted-foreground">{t('briefSituation')}</h3>
+                  <p className="text-sm leading-6">{active.summary}</p>
+                </section>
+              ) : null}
+
+              {Object.keys(active.intakeData ?? {}).length > 0 ? (
+                <section>
+                  <h3 className="docket mb-2 text-muted-foreground">{t('briefFacts')}</h3>
+                  <dl className="text-[13px]">
+                    {Object.entries(active.intakeData).map(([k, v]) => (
+                      <div key={k} className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] gap-2 border-b border-dashed border-border py-1.5">
+                        <dt className="truncate text-muted-foreground">{factLabel(k)}</dt>
+                        <dd className="font-medium">{String(v)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
+              ) : null}
+
+              <section>
+                <label htmlFor="case-stage" className="docket mb-2 block text-muted-foreground">
+                  {t('caseStage')}
+                </label>
+                <Select
+                  value={active.status}
+                  onValueChange={(v) => v && transition.mutate({ id: active.id, to: v as CaseDto['status'] })}
+                  disabled={transition.isPending}
+                >
+                  <SelectTrigger id="case-stage" className="h-9 w-full text-[13px]">
+                    <SelectValue>{t(statusKey[active.status])}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STAGES.map((s) => (
+                      <SelectItem key={s} value={s} className="text-[13px]">
+                        {t(statusKey[s])}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </section>
+
+              <Button nativeButton={false} variant="outline" size="sm" className="h-9" render={<Link href="/dashboard/inbox" />}>
+                <MessageSquareText aria-hidden />
+                {t('demoOpenConversation')}
               </Button>
             </div>
+          </aside>
+        ) : null}
+      </div>
 
-            {selectedCase.summary && (
-              <div className="rounded-lg border border-border/70 bg-muted/30 p-3 text-xs">
-                <span className="font-semibold text-muted-foreground uppercase text-[10px] block mb-1">
-                  Matter Executive Summary
-                </span>
-                <p className="text-foreground leading-relaxed">{selectedCase.summary}</p>
-              </div>
-            )}
-
-            {/* Intake Verified Data */}
-            {Object.keys(selectedCase.intakeData ?? {}).length > 0 && (
-              <div className="rounded-lg border border-border/70 bg-card p-3 text-xs space-y-2">
-                <span className="font-semibold text-muted-foreground uppercase text-[10px] block">
-                  Intake Fields Captured
-                </span>
-                <dl className="grid grid-cols-2 gap-2 text-xs">
-                  {Object.entries(selectedCase.intakeData).map(([k, v]) => (
-                    <div key={k} className="border-b border-border/40 pb-1">
-                      <dt className="text-muted-foreground font-medium capitalize text-[10px]">{k}</dt>
-                      <dd className="font-semibold text-foreground text-xs">{String(v)}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between pt-2 border-t border-border/60">
-              <Button
-                nativeButton={false}
-                size="sm"
-                variant="outline"
-                className="text-xs"
-                render={<Link href="/dashboard/inbox" />}
-              >
-                <MessageSquare className="h-3.5 w-3.5 mr-1" /> View in Inbox
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => setSelectedCase(null)}
-                className="text-xs"
-              >
-                Close
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Linked Document Requests */}
-      <DocumentRequestsCard cases={query.data ?? []} />
+      <div className="mt-6">
+        <DocumentRequestsCard cases={query.data ?? []} />
+      </div>
     </div>
   );
 }

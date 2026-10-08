@@ -10,7 +10,6 @@ import { CalendarDays, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { z } from 'zod';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { humanizeEnum } from '@/lib/format';
 import { BadgeVariants } from '@/lib/status-badge';
 import {
@@ -26,11 +25,15 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import { apiRequest, ApiError } from '@/lib/api-client';
+import { apiRequest } from '@/lib/api-client';
 import { useLanguage } from '@/lib/language';
 import { useSession } from '@/lib/session';
 import { PageHeader } from '@/components/page-header';
 import { CalendarConnectionCard } from '@/components/calendar-connection-card';
+import { Docket, Signal } from '@/components/signal';
+import { Panel } from '@/components/workspace/panel';
+import { caseListSchema, hearingListSchema } from '@/lib/schemas/case';
+import { cn } from '@/lib/utils';
 import {
   appointmentListSchema,
   appointmentStatusSchema,
@@ -151,113 +154,170 @@ export default function CalendarPage() {
   const monthLabel = monthStart.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   const today = new Date();
 
+  const hearingsQuery = useQuery({
+    queryKey: ['hearings', 'upcoming', 14],
+    queryFn: () => apiRequest('/v1/cases/hearings/upcoming?days=14', { schema: hearingListSchema }),
+    retry: false,
+  });
+  const casesQuery = useQuery({
+    queryKey: ['cases', 'all'],
+    queryFn: () => apiRequest('/v1/cases?status=all', { schema: caseListSchema }),
+    retry: false,
+  });
+  const refOf = (caseId: string) => casesQuery.data?.find((c) => c.id === caseId)?.reference ?? '—';
+  const hearings = [...(hearingsQuery.data ?? [])].sort((a, b) => a.hearingAt.getTime() - b.hearingAt.getTime());
+  const tomorrowEnd = new Date(today);
+  tomorrowEnd.setDate(today.getDate() + 1);
+  tomorrowEnd.setHours(23, 59, 59, 999);
+
   return (
     <div className="space-y-6">
       <PageHeader
-        title={t('calendar')}
-        description={t('calendarDescription')}
-        icon={CalendarDays}
+        eyebrow={`${hearings.length} ${t('calHearings14')}`}
+        title={t('demoDiaryTitle')}
+        description={t('demoDiaryLede')}
         action={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setMonthStart((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}>
-              <ChevronLeft className="size-4" />
-              <span className="sr-only">{t('previousMonth')}</span>
+          canBook ? (
+            <Button size="sm" className="h-8" onClick={() => { setBookDate(new Date()); setBookOpen(true); }}>
+              <CalendarDays aria-hidden />
+              {t('bookAppointment')}
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setMonthStart(new Date(today.getFullYear(), today.getMonth(), 1))}>
-              {t('today')}
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setMonthStart((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}>
-              <ChevronRight className="size-4" />
-              <span className="sr-only">{t('nextMonth')}</span>
-            </Button>
-          </div>
+          ) : null
         }
       />
 
-      <CalendarConnectionCard />
-
-      {appointmentsQuery.isError && (
-        <p role="alert" className="text-sm text-destructive">
-          Couldn&apos;t load appointments: {appointmentsQuery.error.message}
-          {appointmentsQuery.error instanceof ApiError && appointmentsQuery.error.correlationId && (
-            <span className="mt-1 block text-xs text-muted-foreground">
-              correlation id: {appointmentsQuery.error.correlationId}
-            </span>
-          )}
-        </p>
-      )}
-
-      <Card className="p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">{monthLabel}</h2>
-          {canBook ? (
-            <Button size="sm" onClick={() => { setBookDate(new Date()); setBookOpen(true); }}>
-              <CalendarDays className="size-4" />
-              {t('bookAppointment')}
-            </Button>
-          ) : null}
+      {appointmentsQuery.isError ? (
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-xl bg-critical/[0.06] px-4 py-3 ring-1 ring-critical/25">
+          <p className="text-sm">{appointmentsQuery.error.message}</p>
+          <Button variant="outline" size="sm" onClick={() => void appointmentsQuery.refetch()}>
+            {t('inboxTryAgain')}
+          </Button>
         </div>
+      ) : null}
 
-        <div className="grid grid-cols-7 gap-1" aria-busy={appointmentsQuery.isPending} aria-label="Calendar grid">
-          {WEEKDAYS.map((day) => (
-            <div key={day} className="pb-1 text-center text-xs font-medium text-muted-foreground">
-              {day}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+        <Panel title={t('calCourtDates')} meta={t('calNext14')} bodyClassName="divide-y divide-border">
+          {hearingsQuery.isPending ? (
+            <div className="space-y-2 p-3" aria-busy="true">
+              {Array.from({ length: 3 }, (_, i) => (
+                <Skeleton key={i} className="h-14 w-full" />
+              ))}
             </div>
-          ))}
+          ) : null}
+          {hearingsQuery.isSuccess && hearings.length === 0 ? (
+            <p className="px-4 py-8 text-center text-[13px] text-muted-foreground">{t('calNoHearings')}</p>
+          ) : null}
+          {hearings.map((h) => {
+            const soon = h.hearingAt <= tomorrowEnd;
+            return (
+              <div
+                key={h.id}
+                className={cn(
+                  'relative grid grid-cols-[4.5rem_minmax(0,1fr)] gap-3 px-4 py-3',
+                  soon && 'before:absolute before:inset-y-3 before:start-0 before:w-[3px] before:rounded-full before:bg-critical/70',
+                )}
+              >
+                <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                  <span className="block text-foreground">{formatTime(h.hearingAt)}</span>
+                  {h.hearingAt.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' })}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-[13.5px] font-medium">{h.courtName}</span>
+                  <Docket items={[refOf(h.caseId), h.judge, h.location]} />
+                  {soon ? <Signal level="urgent" className="mt-1">{t('demoNeedsPrep')}</Signal> : null}
+                </span>
+              </div>
+            );
+          })}
+        </Panel>
 
-          {appointmentsQuery.isPending ? (
-            Array.from({ length: 42 }, (_, i) => (
-              <Skeleton key={i} className="h-24 w-full" />
-            ))
-          ) : (
-            cells.map((day, i) => {
-              if (!day) return <div key={`empty-${i}`} className="h-24 rounded-lg bg-muted/40" />;
+        <Panel
+          title={monthLabel}
+          action={
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon-sm" aria-label={t('previousMonth')} onClick={() => setMonthStart((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}>
+                <ChevronLeft className="rtl:rotate-180" aria-hidden />
+              </Button>
+              <Button variant="outline" size="sm" className="h-7" onClick={() => setMonthStart(new Date(today.getFullYear(), today.getMonth(), 1))}>
+                {t('today')}
+              </Button>
+              <Button variant="ghost" size="icon-sm" aria-label={t('nextMonth')} onClick={() => setMonthStart((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}>
+                <ChevronRight className="rtl:rotate-180" aria-hidden />
+              </Button>
+            </div>
+          }
+          bodyClassName="p-3"
+        >
+          <div className="grid grid-cols-7 gap-px overflow-hidden rounded-lg bg-border ring-1 ring-border" aria-busy={appointmentsQuery.isPending} role="grid" aria-label={monthLabel}>
+            {WEEKDAYS.map((day) => (
+              <div key={day} role="columnheader" className="docket bg-sunken py-1.5 text-center text-muted-foreground">
+                {day}
+              </div>
+            ))}
+            {cells.map((day, i) => {
+              if (!day) return <div key={`empty-${i}`} className="min-h-24 bg-sunken/60" />;
               const dayAppts = (appointmentsQuery.data ?? []).filter((a) => sameDay(a.startsAt, day));
+              const dayHearings = hearings.filter((h) => sameDay(h.hearingAt, day));
               const isToday = sameDay(day, today);
               return (
-                <div
-                  key={day.toISOString()}
-                  role="gridcell"
-                  className="group/cell flex h-24 flex-col gap-1 rounded-lg border border-border/60 p-1.5 text-left transition-colors hover:border-primary/40 hover:bg-accent/40"
-                >
+                <div key={day.toISOString()} role="gridcell" className={cn('group/cell flex min-h-24 flex-col gap-1 p-1.5', isToday ? 'bg-accent/40' : 'bg-card')}>
                   <div className="flex items-start justify-between">
-                    <span className={`text-xs font-medium ${isToday ? 'flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground' : 'text-muted-foreground'}`}>
+                    <span className={cn('font-mono text-xs tabular-nums', isToday ? 'flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground' : 'text-muted-foreground')}>
                       {day.getDate()}
                     </span>
                     {canBook ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      className="size-5 opacity-0 group-hover/cell:opacity-100"
-                      onClick={() => { setBookDate(day); setBookOpen(true); }}
-                      aria-label={`Book appointment on ${day.toLocaleDateString()}`}
-                    >
-                      <span aria-hidden>+</span>
-                    </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        className="size-5 opacity-0 focus-visible:opacity-100 group-hover/cell:opacity-100"
+                        onClick={() => { setBookDate(day); setBookOpen(true); }}
+                        aria-label={`${t('bookAppointment')} · ${day.toLocaleDateString()}`}
+                      >
+                        <span aria-hidden>+</span>
+                      </Button>
                     ) : null}
                   </div>
                   <div className="flex flex-1 flex-col gap-1 overflow-hidden">
-                    {dayAppts.slice(0, 3).map((a) => (
+                    {dayHearings.map((h) => (
+                      <span key={h.id} className="truncate rounded bg-critical/10 px-1.5 py-0.5 text-[11px] text-critical">
+                        {formatTime(h.hearingAt)} · {refOf(h.caseId)}
+                      </span>
+                    ))}
+                    {dayAppts.slice(0, 3 - Math.min(dayHearings.length, 2)).map((a) => (
                       <button
                         key={a.id}
                         type="button"
                         onClick={() => setSelectedId(a.id)}
-                        className="truncate rounded bg-primary/10 px-1.5 py-0.5 text-left text-[11px] text-primary hover:bg-primary/20"
+                        className="truncate rounded bg-primary/10 px-1.5 py-0.5 text-start text-[11px] text-primary hover:bg-primary/20"
                       >
                         {formatTime(a.startsAt)} · {a.clientName ?? a.clientWaPhone}
                       </button>
                     ))}
-                    {dayAppts.length > 3 && (
-                      <span className="truncate px-1 text-[11px] text-muted-foreground">+{dayAppts.length - 3} more</span>
-                    )}
+                    {dayAppts.length + dayHearings.length > 3 ? (
+                      <span className="truncate px-1 text-[11px] text-muted-foreground">+{dayAppts.length + dayHearings.length - 3}</span>
+                    ) : null}
                   </div>
                 </div>
               );
-            })
-            )}
+            })}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5"><span aria-hidden className="size-2.5 rounded-sm bg-critical/40" />{t('calLegendHearing')}</span>
+            <span className="flex items-center gap-1.5"><span aria-hidden className="size-2.5 rounded-sm bg-primary/40" />{t('calLegendAppointment')}</span>
+          </div>
+        </Panel>
+      </div>
+
+      <details className="group rounded-xl bg-card ring-1 ring-border">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-[13.5px] font-semibold">
+          {t('calSyncTitle')}
+          <ChevronRight className="size-4 text-muted-foreground transition-transform group-open:rotate-90" aria-hidden />
+        </summary>
+        <div className="border-t border-border p-4">
+          <CalendarConnectionCard />
         </div>
-      </Card>
+      </details>
 
       {bookOpen && bookDate && canBook && (
         <BookAppointmentDialog

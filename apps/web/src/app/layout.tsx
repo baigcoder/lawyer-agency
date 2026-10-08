@@ -1,6 +1,6 @@
 import { ClerkProvider } from '@clerk/nextjs';
 import type { Metadata } from 'next';
-import { Inter, Geist_Mono, Noto_Nastaliq_Urdu } from 'next/font/google';
+import { Inter, Geist_Mono, Instrument_Serif, Noto_Nastaliq_Urdu } from 'next/font/google';
 import type { ReactNode } from 'react';
 import { Providers } from '@/components/providers';
 import { LanguageScript } from '@/components/language-script';
@@ -10,9 +10,17 @@ import './globals.css';
 
 const inter = Inter({ variable: '--font-inter', subsets: ['latin'] });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
+// Display serif: one weight (+ italic) — editorial marketing titles only.
+const instrumentSerif = Instrument_Serif({
+  variable: '--font-instrument-serif',
+  subsets: ['latin'],
+  weight: '400',
+  style: ['normal', 'italic'],
+});
 const urduNastaliq = Noto_Nastaliq_Urdu({
   variable: '--font-urdu-nastaliq',
   subsets: ['arabic'],
+  display: 'swap',
 });
 
 export const metadata: Metadata = {
@@ -42,7 +50,7 @@ export const metadata: Metadata = {
  */
 export default function RootLayout({ children }: { children: ReactNode }) {
   const body = (
-    <body className={`${inter.variable} ${geistMono.variable} ${urduNastaliq.variable} font-sans antialiased`} suppressHydrationWarning>
+    <body className={`${inter.variable} ${geistMono.variable} ${instrumentSerif.variable} ${urduNastaliq.variable} font-sans antialiased`} suppressHydrationWarning>
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:start-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"

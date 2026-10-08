@@ -24,9 +24,9 @@ import { useSession } from '@/lib/session';
 function statusMeta(status: EvolutionConnectionStatus['status']) {
   switch (status) {
     case 'connected':
-      return { label: 'Connected', color: 'default' as const, dot: 'bg-emerald-500' };
+      return { label: 'Connected', color: 'default' as const, dot: 'bg-primary' };
     case 'connecting':
-      return { label: 'Connecting', color: 'secondary' as const, dot: 'bg-amber-500' };
+      return { label: 'Connecting', color: 'secondary' as const, dot: 'bg-attention' };
     case 'disconnected':
       return { label: 'Disconnected', color: 'destructive' as const, dot: 'bg-muted-foreground' };
     default:
@@ -207,7 +207,7 @@ export function WhatsappConnectionCard() {
                   Open WhatsApp → Settings → Linked Devices → Link a Device, then scan the QR code.
                 </p>
               </div>
-            ) : isConnected ? (              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">
+            ) : isConnected ? (              <div className="rounded-lg bg-primary/[0.07] p-4 text-sm ring-1 ring-primary/25">
                 <p className="flex items-center gap-2 font-medium">
                   <CheckCircle2 className="h-4 w-4" /> WhatsApp is connected
                 </p>

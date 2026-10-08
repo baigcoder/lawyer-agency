@@ -1,6 +1,6 @@
 let audioContext: AudioContext | null = null;
 
-function getAudioContext(): AudioContext | null {
+export function getAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
   const Ctx =
     window.AudioContext ||

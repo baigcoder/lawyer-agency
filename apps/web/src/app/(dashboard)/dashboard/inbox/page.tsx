@@ -3,7 +3,7 @@
 import { Suspense, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
-import { Inbox as InboxIcon, Loader2, MessageSquare, ShieldCheck, Sparkles } from 'lucide-react';
+import { Inbox as InboxIcon, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { apiRequest, ApiError } from '@/lib/api-client';
@@ -17,7 +17,6 @@ import { evolutionConnectionStatusSchema } from '@/lib/schemas/whatsapp';
 import { ConversationList } from '@/components/inbox/conversation-list';
 import { ConversationDetail } from '@/components/inbox/conversation-detail';
 import { WhatsappConnectionCard } from '@/components/whatsapp-connection-card';
-import { MobileNav } from '@/components/mobile-nav';
 
 type InboxTabValue = ConversationState | 'ALL' | 'UNASSIGNED' | 'ME';
 
@@ -101,7 +100,7 @@ function InboxContent() {
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
       {listQuery.isError ? (
         <div role="alert" className="border-b border-destructive/20 bg-destructive/10 px-4 py-2 text-xs text-destructive flex items-center justify-between">
-          <span>Couldn&apos;t load inbox: {listQuery.error.message}</span>
+          <span>{t('couldntLoadInbox')}: {listQuery.error.message}</span>
           {listQuery.error instanceof ApiError && listQuery.error.correlationId ? (
             <span className="font-mono text-[10px] opacity-80">
               id: {listQuery.error.correlationId}
@@ -114,7 +113,7 @@ function InboxContent() {
         <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center space-y-4 px-4 py-12">
           <div className="rounded-xl border border-border/70 bg-card p-6 shadow-sm space-y-4">
             <div>
-              <h2 className="text-base font-semibold text-foreground">Connect WhatsApp Front Desk</h2>
+              <h2 className="text-base font-semibold text-foreground">{t('connectWhatsapp')}</h2>
               <p className="mt-1 text-xs text-muted-foreground">
                 {canManageWhatsapp ? t('inboxConnectWhatsappHint') : t('askOwnerToConnectWhatsapp')}
               </p>
@@ -127,14 +126,13 @@ function InboxContent() {
           {/* Triage List Pane */}
           <div
             className={cn(
-              'flex w-full shrink-0 flex-col border-r border-border/60 bg-card/40 md:w-[320px] lg:w-[350px] xl:w-[380px]',
+              'flex w-full shrink-0 flex-col border-e border-border bg-sunken/60 md:w-[300px] lg:w-[320px] xl:w-[340px]',
               selectedId && 'hidden md:flex',
             )}
           >
             {listQuery.isPending ? (
               <div className="flex h-full flex-col">
                 <div className="flex items-center gap-2 px-3.5 pt-3.5 pb-2">
-                  <MobileNav className="lg:hidden" />
                   <h1 className="text-base font-semibold tracking-tight text-foreground">
                     {t('inboxChats')}
                   </h1>
@@ -155,7 +153,6 @@ function InboxContent() {
                 onSelect={setSelectedId}
                 onTabChange={setActiveTab}
                 onSearch={setSearch}
-                leading={<MobileNav className="lg:hidden" />}
               />
             )}
           </div>
@@ -198,30 +195,9 @@ function InboxContent() {
                 />
               ) : null
             ) : (
-              /* Linear-style calm empty state when no conversation selected */
-              <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center bg-card/20">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-border/80 bg-card shadow-sm text-primary">
-                  <MessageSquare className="h-8 w-8" aria-hidden />
-                </div>
-                <div className="max-w-md space-y-1.5">
-                  <h3 className="text-base font-semibold text-foreground tracking-tight">
-                    Select a conversation to triage
-                  </h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Pick an active client inquiry from the queue or search by client phone, name, or case reference.
-                  </p>
-                </div>
-
-                <div className="mt-2 flex flex-wrap items-center justify-center gap-3 text-[11px] text-muted-foreground">
-                  <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/40 px-3 py-1">
-                    <Sparkles className="h-3 w-3 text-primary" />
-                    <span>AI auto-intakes &amp; drafts responses</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/40 px-3 py-1">
-                    <ShieldCheck className="h-3 w-3 text-emerald-600" />
-                    <span>Lawyer oversight required for escalation</span>
-                  </div>
-                </div>
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+                <p className="font-display text-3xl">{t('tlSelectTitle')}</p>
+                <p className="max-w-sm text-sm text-muted-foreground">{t('tlSelectDesc')}</p>
               </div>
             )}
           </div>
@@ -235,9 +211,8 @@ function InboxSkeleton() {
   const { t } = useLanguage();
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden bg-background">
-      <div className="flex w-full shrink-0 flex-col border-r border-border/60 bg-card/40 md:w-[320px] lg:w-[350px] xl:w-[380px]">
+      <div className="flex w-full shrink-0 flex-col border-e border-border bg-sunken/60 md:w-[300px] lg:w-[320px] xl:w-[340px]">
         <div className="flex items-center gap-2 px-3.5 pt-3.5 pb-2">
-          <MobileNav className="lg:hidden" />
           <h1 className="text-base font-semibold tracking-tight text-foreground">
             {t('inboxChats')}
           </h1>

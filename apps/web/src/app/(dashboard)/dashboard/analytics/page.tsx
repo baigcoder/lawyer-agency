@@ -41,10 +41,10 @@ type MetricKey = 'newConversations' | 'aiHandled' | 'humanHandled' | 'escalation
 
 const METRIC_TABS: Array<{ key: MetricKey; label: string; color: string }> = [
   { key: 'newConversations', label: 'New leads', color: 'bg-primary' },
-  { key: 'aiHandled', label: 'AI handled', color: 'bg-emerald-400' },
-  { key: 'humanHandled', label: 'Human handled', color: 'bg-sky-400' },
-  { key: 'escalations', label: 'Escalations', color: 'bg-amber-400' },
-  { key: 'casesOpened', label: 'Cases opened', color: 'bg-violet-400' },
+  { key: 'aiHandled', label: 'AI handled', color: 'bg-chart-1' },
+  { key: 'humanHandled', label: 'Human handled', color: 'bg-chart-3' },
+  { key: 'escalations', label: 'Escalations', color: 'bg-chart-5' },
+  { key: 'casesOpened', label: 'Cases opened', color: 'bg-chart-2' },
   { key: 'paymentsCents', label: 'Fees', color: 'bg-primary' },
 ];
 
@@ -78,7 +78,7 @@ function DailyBarChart({ series, metric }: { series: DailySeriesPoint[]; metric:
           );
         })}
       </div>
-      <div className="flex justify-between text-[10px] text-muted-foreground">
+      <div className="flex justify-between text-[11px] text-muted-foreground">
         <span>{series[0]?.date.slice(5)}</span>
         <span>{series[Math.floor(series.length / 2)]?.date.slice(5)}</span>
         <span>{series[series.length - 1]?.date.slice(5)}</span>
@@ -119,7 +119,7 @@ function FunnelCard({ funnel }: { funnel: { conversations: number; cases: number
                 </div>
                 <div className="flex items-center gap-2">
                   {rate !== null && (
-                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
                       {rate}%
                     </span>
                   )}
@@ -161,7 +161,7 @@ function RevenueCard({ revenue }: { revenue: Array<{ matterType: string; totalCe
                 <span className="font-medium">{row.matterType}</span>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">{row.paymentCount} payment{row.paymentCount === 1 ? '' : 's'}</span>
-                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">{share}%</span>
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">{share}%</span>
                   <span className="font-semibold">{formatMoney(row.totalCents)}</span>
                 </div>
               </div>
@@ -388,9 +388,9 @@ export default function AnalyticsPage() {
                         {WEEKDAYS[new Date(`${p.date}T00:00:00Z`).getUTCDay()]}
                       </TableCell>
                       <TableCell className="text-right font-medium">{p.newConversations || '—'}</TableCell>
-                      <TableCell className="text-right text-emerald-500">{p.aiHandled || '—'}</TableCell>
-                      <TableCell className="text-right text-sky-500">{p.humanHandled || '—'}</TableCell>
-                      <TableCell className={cn('text-right', p.escalations > 0 && 'font-semibold text-amber-500')}>
+                      <TableCell className="text-right text-primary">{p.aiHandled || '—'}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{p.humanHandled || '—'}</TableCell>
+                      <TableCell className={cn('text-right', p.escalations > 0 && 'font-semibold text-attention')}>
                         {p.escalations || '—'}
                       </TableCell>
                       <TableCell className="text-right">{p.casesOpened || '—'}</TableCell>

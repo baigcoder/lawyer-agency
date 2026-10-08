@@ -37,7 +37,7 @@ export default function WhatsappPage() {
   const autoReply = aiSettings.data?.aiAutoReplyEnabled ?? false;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="max-w-3xl space-y-6">
       <PageHeader
         icon={MessageCircleMore}
         title={t('whatsapp')}

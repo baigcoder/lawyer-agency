@@ -39,7 +39,7 @@ export default function DocumentsPage() {
   const selectedClient = clients.data?.find((c) => c.id === clientId);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="space-y-6">
       <PageHeader
         title={t('documents')}
         description={t('documentsDescription')}
@@ -90,7 +90,7 @@ export default function DocumentsPage() {
                       <div className="min-w-0 flex-1">
                         <p className="font-medium">{client.name ?? client.waPhone}</p>
                         <p className="truncate text-xs text-muted-foreground">{client.waPhone}</p>
-                        <Badge variant="secondary" className="mt-2 text-[10px]">
+                        <Badge variant="secondary" className="mt-2 text-[11px]">
                           {client.documentCount} document{client.documentCount === 1 ? '' : 's'}
                         </Badge>
                       </div>

@@ -470,7 +470,7 @@ function TeamContent() {
     );
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="max-w-3xl space-y-6">
       <PageHeader icon={Users} title={t('team')} description={t('teamDescription')} />
 
       {canManage ? (

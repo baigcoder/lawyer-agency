@@ -2,83 +2,82 @@
 
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import {
-  AlertTriangle,
-  Bot,
-  CheckCircle2,
-  Clock3,
-  Inbox,
-  MessageCircleMore,
-  ShieldCheck,
-  Wallet,
-} from 'lucide-react';
+import { CalendarDays, CheckCircle2, Clock3, MessageCircleMore } from 'lucide-react';
 
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { AttentionRow } from '@/components/attention-row';
 import { MetricCard } from '@/components/metric-card';
 import { PageHeader } from '@/components/page-header';
+import { Docket, Signal, type SignalLevel } from '@/components/signal';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AiControls } from '@/components/overview/ai-controls';
-import { DocRequestsWidget } from '@/components/overview/doc-requests-widget';
-import { EscalationPreview } from '@/components/overview/escalation-preview';
-import { FunnelStrip } from '@/components/overview/funnel-strip';
-import { PaymentsFollowup } from '@/components/overview/payments-followup';
-import { SlaBanner } from '@/components/overview/sla-banner';
-import { TodaySchedule } from '@/components/overview/today-schedule';
-import { apiRequest, ApiError } from '@/lib/api-client';
+import { Meter, Panel } from '@/components/workspace/panel';
+import { SlaClock, useNow } from '@/components/workspace/sla-clock';
+import { apiRequest } from '@/lib/api-client';
 import {
   dailySeriesSchema,
   dashboardMetricsSchema,
   funnelSchema,
-  revenueByAreaSchema,
   slaBreachesSchema,
 } from '@/lib/schemas/analytics';
 import { firmProfileReadSchema } from '@/lib/schemas/firm-profile';
 import { lawyerProfileSchema } from '@/lib/schemas/lawyer-profile';
-import { inboxListSchema } from '@/lib/schemas/inbox';
-import { escalationListSchema } from '@/lib/schemas/escalations';
+import { inboxListSchema, type InboxSummary } from '@/lib/schemas/inbox';
+import { escalationListSchema, type EscalationSummary } from '@/lib/schemas/escalations';
 import { hearingListSchema } from '@/lib/schemas/case';
 import { appointmentListSchema } from '@/lib/schemas/appointment';
 import { documentRequestListSchema } from '@/lib/schemas/document-requests';
 import { paymentListSchema } from '@/lib/schemas/payment';
 import { evolutionConnectionStatusSchema } from '@/lib/schemas/whatsapp';
-import { formatMoney, humanizeEnum, initialsOf, timeAgo } from '@/lib/format';
+import { formatMoney, timeAgo } from '@/lib/format';
 import { useLanguage } from '@/lib/language';
 import { useSession } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
-const INBOX_POLL_MS = 5_000;
-
-const guardrails = [
-  { title: 'Clients know it is an AI', urdu: 'ہر گفتگو میں اے آئی کا تعارف', detail: 'Every new conversation starts with a clear disclosure.' },
-  { title: 'Urgent matters reach a lawyer', urdu: 'فوری معاملات فوراً وکیل کو', detail: 'Self-harm, violence, arrest, and fast deadlines bypass automation.' },
-  { title: 'No legal advice given', urdu: 'قانونی مشورہ کبھی نہیں', detail: 'The assistant collects facts, answers approved FAQs, and hands off safely.' },
-  { title: '24-hour messaging rule respected', urdu: '۲۴ گھنٹے کے قاعدے کی پابندی', detail: 'Outside the WhatsApp window, only approved templates can send.' },
-] as const;
+const POLL_MS = 5_000;
+const OVERDUE_DAYS = 14;
 
 const launchSteps = [
   { key: 'firm', title: 'Create your secure firm workspace', description: 'Add team members, practice areas, and office hours.' },
   { key: 'owner', title: 'Complete your professional profile', description: 'Bio, bar membership, and featured cases for AI credibility.' },
-  { key: 'whatsapp', title: 'Connect WhatsApp free — scan one QR code', description: 'Link your existing number with your phone. No Meta verification needed.' },
+  { key: 'whatsapp', title: 'Connect WhatsApp', description: 'Link your firm’s number so clients reach Wakeel.' },
   { key: 'test', title: 'Test the AI with a pretend client message', description: 'Send a test inbound from the setup page and watch the AI reply live.' },
   { key: 'clients', title: 'Invite clients to message your number', description: 'Anyone who messages your linked number reaches the AI instantly.' },
 ] as const;
 
+function escalationLevel(e: EscalationSummary): SignalLevel {
+  return e.triggerType === 'IMMINENT_DEADLINE' || e.triggerType === 'MANUAL' ? 'urgent' : 'critical';
+}
+
+function clientLabel(c: InboxSummary['client']) {
+  return c.name ?? c.waPhone;
+}
+
+function RowsSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div className="space-y-2 p-2" aria-busy="true">
+      {Array.from({ length: rows }, (_, i) => (
+        <Skeleton key={i} className="h-11 w-full" />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Command center. Answers, in order: what is critical, what is waiting for
+ * a lawyer, what is scheduled, what the AI handled — then the money and the
+ * pipeline. Priority is carried by Chambers Signals, not by card size.
+ */
 export default function OverviewPage() {
   const { t, dir } = useLanguage();
+  const urdu = dir === 'rtl' ? 'font-urdu' : undefined;
   const { can, session } = useSession();
   const canReadAnalytics = can('analytics:read');
   const canReadPayments = can('payments:read');
   const canManageFirm = can('users:manage');
   const isOwner = Boolean(session?.isOwner || canManageFirm);
-  const isLawyer = session?.role === 'Lawyer';
   const isStaff = session?.role === 'Staff';
-  const overviewSummary = isStaff
-    ? t('staffOverviewSummary')
-    : isLawyer
-      ? t('lawyerOverviewSummary')
-      : t('firmOverviewSummary');
+
   const metrics = useQuery({
     queryKey: ['analytics', 'dashboard'],
     queryFn: () => apiRequest('/v1/analytics/dashboard', { schema: dashboardMetricsSchema }),
@@ -94,15 +93,10 @@ export default function OverviewPage() {
     queryFn: () => apiRequest('/v1/analytics/funnel', { schema: funnelSchema }),
     enabled: canReadAnalytics,
   });
-  const revenue = useQuery({
-    queryKey: ['analytics', 'revenue-by-area'],
-    queryFn: () => apiRequest('/v1/analytics/revenue-by-practice-area', { schema: revenueByAreaSchema }),
-    enabled: canReadAnalytics,
-  });
   const slaBreaches = useQuery({
     queryKey: ['analytics', 'sla-breaches'],
     queryFn: () => apiRequest('/v1/analytics/sla-breaches', { schema: slaBreachesSchema }),
-    refetchInterval: INBOX_POLL_MS,
+    refetchInterval: POLL_MS,
     enabled: canReadAnalytics,
   });
   const profile = useQuery({
@@ -115,24 +109,19 @@ export default function OverviewPage() {
     retry: false,
     enabled: canManageFirm,
   });
-  const inbox = useQuery({
-    queryKey: ['inbox', 'overview', 'HUMAN_REQUIRED'],
-    queryFn: () => apiRequest('/v1/inbox?state=HUMAN_REQUIRED', { schema: inboxListSchema }),
+  const waiting = useQuery({
+    queryKey: ['inbox', 'overview', isOwner ? 'HUMAN_REQUIRED' : 'assignedToMe'],
+    queryFn: () =>
+      apiRequest(isOwner ? '/v1/inbox?state=HUMAN_REQUIRED' : '/v1/inbox?assignedToMe=true', { schema: inboxListSchema }),
     retry: false,
-    refetchInterval: INBOX_POLL_MS,
-  });
-  const myInbox = useQuery({
-    queryKey: ['inbox', 'overview', 'assignedToMe'],
-    queryFn: () => apiRequest('/v1/inbox?assignedToMe=true', { schema: inboxListSchema }),
-    retry: false,
-    refetchInterval: INBOX_POLL_MS,
-    enabled: !isOwner && can('inbox:read'),
+    refetchInterval: POLL_MS,
+    enabled: can('inbox:read'),
   });
   const openEscalations = useQuery({
     queryKey: ['escalations', 'OPEN'],
     queryFn: () => apiRequest('/v1/escalations?status=OPEN', { schema: escalationListSchema }),
     retry: false,
-    refetchInterval: INBOX_POLL_MS,
+    refetchInterval: POLL_MS,
   });
   const whatsapp = useQuery({
     queryKey: ['whatsapp', 'connection'],
@@ -145,19 +134,15 @@ export default function OverviewPage() {
       const start = new Date();
       start.setHours(0, 0, 0, 0);
       const end = new Date(start);
-      end.setDate(end.getDate() + 1);
-      const params = new URLSearchParams({
-        from: start.toISOString(),
-        to: end.toISOString(),
-        limit: '100',
-      });
+      end.setDate(end.getDate() + 2);
+      const params = new URLSearchParams({ from: start.toISOString(), to: end.toISOString(), limit: '100' });
       return apiRequest(`/v1/appointments?${params.toString()}`, { schema: appointmentListSchema });
     },
     retry: false,
   });
-  const hearingsToday = useQuery({
-    queryKey: ['hearings', 'upcoming', 1],
-    queryFn: () => apiRequest('/v1/cases/hearings/upcoming?days=1', { schema: hearingListSchema }),
+  const hearingsSoon = useQuery({
+    queryKey: ['hearings', 'upcoming', 2],
+    queryFn: () => apiRequest('/v1/cases/hearings/upcoming?days=2', { schema: hearingListSchema }),
     retry: false,
   });
   const docRequests = useQuery({
@@ -173,403 +158,343 @@ export default function OverviewPage() {
   });
 
   const firmName = profile.data?.displayName ?? profile.data?.firmName ?? t('yourFirm');
-  const connected = (whatsapp.data?.status ?? 'disconnected') === 'connected';
-  const whatsappCtaHref = connected || !canManageFirm ? '/dashboard/whatsapp' : '/dashboard/setup';
-  const firmComplete = Boolean(profile.data?.firmName && profile.data?.city && profile.data?.practiceAreas.length);
-  const waitingCount = inbox.data?.length ?? 0;
-  const myQueueCount = myInbox.data?.length ?? 0;
-  const escalationCount = openEscalations.data?.length ?? 0;
+  const connected = whatsapp.data?.status === 'connected';
+  const escalations = [...(openEscalations.data ?? [])].sort((a, b) => a.slaDeadline.getTime() - b.slaDeadline.getTime());
+  const waitingList = waiting.data ?? [];
+  const drafts = waitingList.filter((c) => c.pendingDraft).length;
   const series = daily.data ?? [];
-  const aiHandled7d = series.reduce((acc, p) => acc + p.aiHandled, 0);
-  const humanHandled7d = series.reduce((acc, p) => acc + p.humanHandled, 0);
-  const slaCount = slaBreaches.data ?? 0;
-  const ackMinutes = metrics.data?.avgEscalationAckMinutes7d;
+  const aiHandled = series.reduce((n, p) => n + p.aiHandled, 0);
+  const humanHandled = series.reduce((n, p) => n + p.humanHandled, 0);
+  const proofs = (payments.data ?? []).filter((p) => p.status === 'PENDING');
+  const overdueCutoff = useNow(60_000) - OVERDUE_DAYS * 86_400_000;
+  const overdue = (payments.data ?? []).filter((p) => p.status === 'REQUESTED' && p.requestedAt.getTime() < overdueCutoff);
+  const breaches = slaBreaches.data ?? 0;
+
+  const endOfToday = new Date();
+  endOfToday.setHours(23, 59, 59, 999);
+  const diary = [
+    ...(hearingsSoon.data ?? []).map((h) => ({
+      key: h.id,
+      at: h.hearingAt,
+      title: h.courtName,
+      meta: [h.judge, h.location],
+      level: 'urgent' as SignalLevel,
+      href: '/dashboard/calendar',
+    })),
+    ...(appointmentsToday.data ?? [])
+      .filter((a) => a.status !== 'CANCELLED')
+      .map((a) => ({
+        key: a.id,
+        at: a.startsAt,
+        title: `${t('demoConsultation')} · ${a.clientName ?? a.clientWaPhone}`,
+        meta: [a.lawyerName, a.location],
+        level: 'routine' as SignalLevel,
+        href: '/dashboard/calendar',
+      })),
+  ].sort((a, b) => a.at.getTime() - b.at.getTime());
+  const todayCount = diary.filter((d) => d.at <= endOfToday).length;
 
   const launchState: Record<string, boolean> = {
-    firm: firmComplete,
+    firm: Boolean(profile.data?.firmName && profile.data?.city && profile.data?.practiceAreas.length),
     owner: Boolean(ownerProfile.data?.profileCompletedAt),
     whatsapp: connected,
     test: Boolean(profile.data?.setupTestSentAt),
     clients: Boolean(profile.data?.firstClientMessageAt),
   };
   const launchCompleted = launchSteps.filter((s) => launchState[s.key]).length;
-  const launchPct = Math.round((launchCompleted / launchSteps.length) * 100);
-  const launchDone = launchPct === 100;
+  const launchDone = launchCompleted === launchSteps.length;
 
   const firstName = session?.name.split(/\s+/)[0] ?? firmName;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? t('goodMorning') : hour < 17 ? t('goodAfternoon') : t('goodEvening');
-
-  const kpiCards = [
-    {
-      title: t('assignedToMe'),
-      value: myInbox.isSuccess ? String(myQueueCount) : undefined,
-      detail: t('assignedToMeDetail'),
-      spark: undefined as number[] | undefined,
-      icon: Inbox,
-      href: '/dashboard/inbox?tab=ME',
-      isPending: myInbox.isPending,
-      visible: !isOwner,
-    },
-    {
-      title: t('newConversations7d'),
-      value: metrics.data ? String(metrics.data.newLeads7d) : undefined,
-      detail: `${metrics.data?.casesOpened7d ?? '—'} ${t('casesOpened7dShort')} · ${metrics.data?.casesClosed7d ?? '—'} ${t('casesClosed7dShort')}`,
-      spark: series.map((p) => p.newConversations),
-      icon: Inbox,
-      href: '/dashboard/inbox',
-      isPending: metrics.isPending,
-      visible: canReadAnalytics,
-    },
-    {
-      title: t('aiContainment7d'),
-      value:
-        metrics.data == null
-          ? undefined
-          : metrics.data.aiContainmentRate === null
-            ? '—'
-            : `${(metrics.data.aiContainmentRate * 100).toFixed(0)}%`,
-      detail: t('handledWithoutStaff'),
-      spark: series.map((p) => p.aiHandled),
-      icon: Bot,
-      href: '/dashboard/analytics',
-      isPending: metrics.isPending,
-      visible: canReadAnalytics,
-    },
-    {
-      title: t('openEscalations'),
-      value: openEscalations.isSuccess ? String(escalationCount) : undefined,
-      detail:
-        ackMinutes == null
-          ? t('awaitingStaffAction')
-          : `${t('avgAckTime')}: ${ackMinutes}m`,
-      spark: series.map((p) => p.escalations),
-      icon: AlertTriangle,
-      href: '/dashboard/escalations',
-      isPending: openEscalations.isPending,
-      visible: true,
-    },
-    {
-      title: t('feesCollected30d'),
-      value: metrics.data ? formatMoney(metrics.data.feesCollectedCents30d) : undefined,
-      detail: t('recordedSuccessfulPayments'),
-      spark: series.map((p) => p.paymentsCents),
-      icon: Wallet,
-      href: '/dashboard/payments',
-      isPending: metrics.isPending,
-      visible: canReadAnalytics && canReadPayments,
-    },
-  ].filter((card) => card.visible);
+  const dateDocket = new Date().toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' }).toUpperCase();
+  const attentionCount = escalations.length + waitingList.length + proofs.length + (docRequests.data?.length ?? 0) + overdue.length + (connected ? 0 : 1) + (breaches > 0 ? 1 : 0);
+  const attentionPending = openEscalations.isPending || waiting.isPending;
 
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow={
+          <span suppressHydrationWarning>
+            {dateDocket} · {profile.data?.city ?? ''}
+          </span>
+        }
         title={`${greeting}, ${firstName}`}
-        description={`${firmName} · ${overviewSummary}`}
+        description={
+          attentionPending
+            ? `${firmName}`
+            : attentionCount === 0
+              ? t('allClearDetail')
+              : `${firmName} · ${attentionCount} ${t('ovItemsNeedYou')}`
+        }
         action={
-          <Button nativeButton={false} variant="outline" render={<Link href={whatsappCtaHref} />}>
-            <MessageCircleMore className="me-2 h-4 w-4" />
-            {connected ? t('manageWhatsapp') : canManageFirm ? t('connectWhatsapp') : t('whatsappStatus')}
+          <Button nativeButton={false} variant="outline" size="sm" className="h-8" render={<Link href="/dashboard/inbox" />}>
+            <MessageCircleMore aria-hidden />
+            {t('openFullInbox')}
           </Button>
         }
       />
 
-      {!isStaff ? <AiControls canManage={canManageFirm} /> : null}
-
-      {!isOwner ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('yourWorkQueue')}</CardTitle>
-            <CardDescription>{t('yourWorkQueueDesc')}</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            <Button nativeButton={false} size="sm" render={<Link href="/dashboard/inbox?tab=ME" />}>
-              <Inbox className="h-4 w-4" />
-              {t('openAssignedInbox')}
-              {myQueueCount > 0 ? <Badge className="ms-1">{myQueueCount}</Badge> : null}
-            </Button>
-            <Button nativeButton={false} size="sm" variant="outline" render={<Link href="/dashboard/inbox?tab=HUMAN_REQUIRED" />}>
-              <AlertTriangle className="h-4 w-4" />
-              {t('needsHuman')}
-              {waitingCount > 0 ? <Badge variant="destructive" className="ms-1">{waitingCount}</Badge> : null}
-            </Button>
-            <Button nativeButton={false} size="sm" variant="outline" render={<Link href="/dashboard/escalations" />}>
-              {t('escalations')}
-              {escalationCount > 0 ? <Badge variant="secondary" className="ms-1">{escalationCount}</Badge> : null}
-            </Button>
-            <Button nativeButton={false} size="sm" variant="outline" render={<Link href="/dashboard/calendar" />}>
-              <Clock3 className="h-4 w-4" />
-              {t('calendar')}
-            </Button>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {canReadAnalytics && metrics.isError ? (
-        <p role="alert" className="text-sm text-destructive">
-          {t('couldntLoadMetrics')}:{' '}
-          {metrics.error instanceof ApiError ? metrics.error.message : t('unknownError')}
-          {metrics.error instanceof ApiError && metrics.error.correlationId && (
-            <span className="ms-2 text-xs text-muted-foreground">
-              {t('correlationId')}: {metrics.error.correlationId}
-            </span>
-          )}
-        </p>
-      ) : null}
-
-      {canReadAnalytics ? <SlaBanner count={slaCount} /> : null}
-
-      <div className={cn(
-        'grid gap-4',
-        kpiCards.length > 1 && 'sm:grid-cols-2',
-        kpiCards.length === 3 && 'xl:grid-cols-3',
-        kpiCards.length >= 4 && 'xl:grid-cols-4',
-      )}>
-        {kpiCards.map((card) => (
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <MetricCard
+          title={t('demoMetricCritical')}
+          value={openEscalations.isSuccess ? escalations.length : undefined}
+          isPending={openEscalations.isPending}
+          signal={escalations.length ? 'critical' : 'ok'}
+          detail={
+            metrics.data?.avgEscalationAckMinutes7d != null
+              ? `${t('avgAckTime')}: ${metrics.data.avgEscalationAckMinutes7d}m`
+              : <Docket items={escalations.slice(0, 3).map((e) => e.client.name ?? e.client.waPhone)} />
+          }
+          href="/dashboard/escalations"
+        />
+        <MetricCard
+          title={isOwner ? t('demoMetricWaiting') : t('assignedToMe')}
+          value={waiting.isSuccess ? waitingList.length : undefined}
+          isPending={waiting.isPending}
+          signal={waitingList.length ? 'attention' : 'routine'}
+          detail={`${drafts} ${t('demoDraftsAwaiting')}`}
+          href={isOwner ? '/dashboard/inbox?tab=HUMAN_REQUIRED' : '/dashboard/inbox?tab=ME'}
+        />
+        <MetricCard
+          title={t('sigScheduled')}
+          value={appointmentsToday.isSuccess || hearingsSoon.isSuccess ? todayCount : undefined}
+          isPending={appointmentsToday.isPending && hearingsSoon.isPending}
+          signal="routine"
+          detail={`${diary.length - todayCount} ${t('demoTomorrow')}`}
+          href="/dashboard/calendar"
+        />
+        {canReadAnalytics ? (
           <MetricCard
-            key={card.title}
-            title={card.title}
-            value={card.value}
-            isPending={card.isPending}
-            detail={<span className="font-medium text-primary">{card.detail}</span>}
-            icon={card.icon}
-            spark={card.spark}
-            href={card.href}
+            title={t('aiContainment7d')}
+            value={
+              metrics.data == null
+                ? undefined
+                : metrics.data.aiContainmentRate === null
+                  ? '—'
+                  : `${Math.round(metrics.data.aiContainmentRate * 100)}%`
+            }
+            isPending={metrics.isPending}
+            signal="ok"
+            detail={`${aiHandled} / ${aiHandled + humanHandled}`}
+            spark={series.map((p) => p.aiHandled)}
+            href="/dashboard/analytics"
           />
-        ))}
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-2">
-        <Card className={cn(waitingCount > 0 && 'border-amber-500/30 shadow-sm ring-1 ring-amber-500/10')}>
-          <CardHeader>
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <CardTitle>{isOwner ? t('priorityInbox') : t('assignedToMe')}</CardTitle>
-                <CardDescription>
-                  {isOwner ? t('conversationsWaiting') : t('assignedToMeDetail')}
-                </CardDescription>
-              </div>
-              {(isOwner ? waitingCount : myQueueCount) > 0 ? (
-                <Badge variant="destructive">
-                  {isOwner ? waitingCount : myQueueCount} {t('waiting')}
-                </Badge>
-              ) : null}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-1">
-            {(isOwner ? inbox.isPending : myInbox.isPending) ? (
-              <div className="space-y-2" aria-busy="true" aria-label={t('loadingInbox')}>
-                {Array.from({ length: 4 }, (_, i) => (
-                  <Skeleton key={i} className="h-12 w-full" />
-                ))}
-              </div>
-            ) : null}
-            {(isOwner ? inbox.isError : myInbox.isError) ? (
-              <p role="status" className="text-sm text-muted-foreground">
-                {t('couldntLoadInbox')}{' '}
-                <Link href="/dashboard/inbox" className="underline">{t('openFullInbox')}</Link>
-              </p>
-            ) : null}
-            {(isOwner ? inbox.isSuccess && waitingCount === 0 : myInbox.isSuccess && myQueueCount === 0) ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                {connected
-                  ? isOwner
-                    ? t('nothingWaiting')
-                    : t('nothingAssignedToYou')
-                  : t('connectWhatsappForInbox')}
-              </p>
-            ) : null}
-            {(isOwner ? inbox.data : myInbox.data)
-              ?.slice(0, 5)
-              .map((conversation) => (
-                  <Link
-                    key={conversation.id}
-                    href={`/dashboard/inbox?conversation=${conversation.id}`}
-                    className="flex items-center gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-muted/60"
-                  >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary ring-1 ring-primary/20">
-                      {initialsOf(conversation.client.name)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="font-medium">{conversation.client.name ?? t('unknown')}</p>
-                        {conversation.lastClientMessageAt ? (
-                          <span className="text-xs text-muted-foreground">
-                            {timeAgo(conversation.lastClientMessageAt)}
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {conversation.lastMessage?.body ?? t('noPreview')}
-                      </p>
-                    </div>
-                    <Badge variant="destructive">{humanizeEnum(conversation.state)}</Badge>
-                  </Link>
-                ))
-              }
-            {(isOwner ? waitingCount : myQueueCount) > 0 ? (
-              <div className="pt-2">
-                <Button
-                  nativeButton={false}
-                  size="sm"
-                  render={<Link href={isOwner ? '/dashboard/inbox' : '/dashboard/inbox?tab=ME'} />}
-                >
-                  {t('openFullInbox')}
-                </Button>
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-
-        <TodaySchedule
-          appointments={appointmentsToday.data}
-          hearings={hearingsToday.data}
-          isPending={appointmentsToday.isPending || hearingsToday.isPending}
-          isError={appointmentsToday.isError || hearingsToday.isError}
-        />
-      </div>
-
-      {openEscalations.isSuccess && docRequests.isSuccess && escalationCount === 0 && docRequests.data.length === 0 ? (
-        <Card className="border-emerald-500/20 bg-emerald-500/5">
-          <CardContent className="flex items-center gap-3 py-4">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500">
-              <CheckCircle2 className="h-4 w-4" aria-hidden />
-            </div>
-            <div>
-              <p className="font-medium">{t('allClear')}</p>
-              <p className="text-sm text-muted-foreground">{t('allClearDetail')}</p>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-6 xl:grid-cols-2">
-          <EscalationPreview
-            items={openEscalations.data}
-            isPending={openEscalations.isPending}
-            isError={openEscalations.isError}
-          />
-          <DocRequestsWidget
-            items={docRequests.data}
+        ) : (
+          <MetricCard
+            title={t('docRequestsTitle')}
+            value={docRequests.isSuccess ? docRequests.data.length : undefined}
             isPending={docRequests.isPending}
-            isError={docRequests.isError}
+            signal="routine"
+            href="/dashboard/documents"
           />
-        </div>
-      )}
+        )}
+      </div>
 
-      {canReadAnalytics ? (
-        <FunnelStrip
-          funnel={funnel.data}
-          revenue={revenue.data}
-          aiHandled={aiHandled7d}
-          humanHandled={humanHandled7d}
-          isPending={funnel.isPending || revenue.isPending}
-          isError={funnel.isError || revenue.isError}
-        />
-      ) : null}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
+        <Panel
+          title={t('needsAttentionNow')}
+          meta={attentionPending ? '…' : `${attentionCount} ${t('demoItems')}`}
+          bodyClassName="p-2"
+        >
+          {attentionPending ? <RowsSkeleton /> : null}
+          {!connected && whatsapp.isSuccess ? (
+            <AttentionRow
+              level="critical"
+              href={canManageFirm ? '/dashboard/setup' : '/dashboard/whatsapp'}
+              title={t('ovWhatsappDown')}
+              meta={<Docket items={[t('ovWhatsappDownMeta')]} />}
+            />
+          ) : null}
+          {breaches > 0 ? (
+            <AttentionRow
+              level="critical"
+              href="/dashboard/escalations"
+              title={`${breaches} ${t('ovSlaBreached')}`}
+              meta={<Docket items={[t('demoSlaTarget')]} />}
+            />
+          ) : null}
+          {escalations.map((e) => (
+            <AttentionRow
+              key={e.id}
+              level={escalationLevel(e)}
+              href="/dashboard/escalations"
+              title={`${e.client.name ?? e.client.waPhone} — ${t(`escTrigger${e.triggerType}`)}`}
+              meta={<Docket items={[e.assignedTo?.name ?? t('demoUnassigned'), timeAgo(e.createdAt)]} />}
+              trailing={<SlaClock deadline={e.slaDeadline} stopped={Boolean(e.acknowledgedAt)} />}
+            />
+          ))}
+          {waitingList
+            .filter((c) => !escalations.some((e) => e.conversationId === c.id))
+            .slice(0, 6)
+            .map((c) => (
+              <AttentionRow
+                key={c.id}
+                level="attention"
+                href={`/dashboard/inbox?conversation=${c.id}`}
+                title={`${clientLabel(c.client)}${c.case ? ` — ${c.case.reference}` : ''}`}
+                meta={
+                  <Docket
+                    items={[
+                      c.assignedTo?.name ?? t('demoUnassigned'),
+                      c.pendingDraft ? t('tlDraft') : null,
+                      c.pendingPayment?.proofMessageId ? t('tlProof') : null,
+                    ]}
+                  />
+                }
+                trailing={
+                  c.lastClientMessageAt ? (
+                    <span className="docket text-muted-foreground">{timeAgo(c.lastClientMessageAt)}</span>
+                  ) : null
+                }
+              />
+            ))}
+          {proofs.map((p) => (
+            <AttentionRow
+              key={p.id}
+              level="attention"
+              href="/dashboard/payments"
+              title={`${formatMoney(p.amountCents)} ${t('demoProofToVerify')} — ${p.client?.name ?? p.client?.waPhone ?? ''}`}
+              meta={<Docket items={[p.case?.reference, p.method.replace('_', ' ')]} />}
+            />
+          ))}
+          {(docRequests.data ?? []).slice(0, 4).map((d) => (
+            <AttentionRow
+              key={d.id}
+              level="routine"
+              href="/dashboard/documents"
+              title={`${d.description} — ${d.clientName ?? ''}`}
+              meta={<Docket items={[d.caseReference, `${t('demoRequested')} ${timeAgo(d.createdAt)}`]} />}
+            />
+          ))}
+          {overdue.map((p) => (
+            <AttentionRow
+              key={p.id}
+              level="routine"
+              href="/dashboard/payments"
+              title={`${formatMoney(p.amountCents)} ${t('demoOverdueFrom')} ${p.client?.name ?? ''}`}
+              meta={<Docket items={[p.case?.reference, `${t('demoRequested')} ${timeAgo(p.requestedAt)}`]} />}
+            />
+          ))}
+          {!attentionPending && attentionCount === 0 ? (
+            <div className="flex items-center gap-3 px-3 py-6">
+              <CheckCircle2 className="size-5 text-primary" aria-hidden />
+              <div>
+                <p className="text-sm font-medium">{t('allClear')}</p>
+                <p className="text-[13px] text-muted-foreground">{t('allClearDetail')}</p>
+              </div>
+            </div>
+          ) : null}
+        </Panel>
+
+        <div className="grid grid-cols-1 content-start gap-4">
+          <Panel
+            title={t('demoDiary')}
+            meta={t('demoTodayTomorrow')}
+            action={
+              <Button nativeButton={false} variant="ghost" size="icon-sm" aria-label={t('calendar')} render={<Link href="/dashboard/calendar" />}>
+                <CalendarDays aria-hidden />
+              </Button>
+            }
+            bodyClassName="divide-y divide-border"
+          >
+            {appointmentsToday.isPending && hearingsSoon.isPending ? <RowsSkeleton rows={3} /> : null}
+            {appointmentsToday.isSuccess && diary.length === 0 ? (
+              <p className={cn('px-4 py-6 text-sm text-muted-foreground', urdu)}>{t('ovDiaryEmpty')}</p>
+            ) : null}
+            {diary.slice(0, 7).map((d) => {
+              const tomorrow = d.at > endOfToday;
+              return (
+                <Link
+                  key={d.key}
+                  href={d.href}
+                  className="grid grid-cols-[3.75rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/50"
+                >
+                  <span className="font-mono text-[13px] tabular-nums text-muted-foreground" suppressHydrationWarning>
+                    {tomorrow ? <span className="block text-[10px] uppercase">{t('demoTmrw')}</span> : null}
+                    {d.at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-[13px] font-medium">{d.title}</span>
+                    <Docket items={d.meta} />
+                  </span>
+                  {d.level === 'urgent' ? <Clock3 className="size-3.5 text-muted-foreground" aria-label={t('calendar')} /> : null}
+                </Link>
+              );
+            })}
+          </Panel>
+
+          {canReadAnalytics ? (
+            <Panel title={t('demoPipeline')} meta={t('demoLast30')} bodyClassName="px-4 py-4">
+              {funnel.isPending ? (
+                <Skeleton className="h-14 w-full" />
+              ) : funnel.data ? (
+                <ol className="grid grid-cols-3 gap-3">
+                  {[
+                    [t('ovConversations'), funnel.data.conversations],
+                    [t('cases'), funnel.data.cases],
+                    [t('ovPaidClients'), funnel.data.paidClients],
+                  ].map(([label, value], i) => (
+                    <li key={String(label)}>
+                      <p className="text-xl font-semibold tabular-nums tracking-tight">{value}</p>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">{label}</p>
+                      <Meter className="mt-2" value={Number(value)} max={Math.max(funnel.data.conversations, 1)} tone={i === 2 ? 'primary' : 'muted'} />
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="text-sm text-muted-foreground">{t('couldntLoadMetrics')}</p>
+              )}
+            </Panel>
+          ) : null}
+        </div>
+      </div>
 
       {canReadPayments ? (
-      <PaymentsFollowup
-        items={payments.data}
-        isPending={payments.isPending}
-        isError={payments.isError}
-      />
+        <Panel title={t('payments')} meta={t('demoLast30')} bodyClassName="grid grid-cols-1 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0 rtl:divide-x-reverse">
+          {[
+            [t('demoCollected'), metrics.data?.feesCollectedCents30d, 'text-foreground'],
+            [t('demoPending'), proofs.reduce((n, p) => n + p.amountCents, 0), 'text-attention'],
+            [t('demoOverdue'), overdue.reduce((n, p) => n + p.amountCents, 0), 'text-critical'],
+          ].map(([label, amount, tone]) => (
+            <Link key={String(label)} href="/dashboard/payments" className="px-4 py-4 transition-colors hover:bg-muted/40">
+              <p className="docket text-muted-foreground">{label}</p>
+              <p className={cn('mt-1.5 font-mono text-lg font-medium tabular-nums', String(tone))}>
+                {amount == null ? '—' : formatMoney(Number(amount))}
+              </p>
+            </Link>
+          ))}
+        </Panel>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {canManageFirm && !launchDone ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('launchPath')}</CardTitle>
-            <CardDescription>
-              {launchDone ? t('launchComplete') : t('whatYourFirmCompletes')}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <div className="mb-4 space-y-2">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{launchCompleted} {t('of')} {launchSteps.length} {t('complete')}</span>
-                <span className="font-medium text-primary">{launchPct}%</span>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-primary transition-all duration-500"
-                  style={{ width: `${launchPct}%` }}
-                />
-              </div>
-            </div>
-            {!launchDone
-              ? launchSteps.map((step) => {
-                  const done = launchState[step.key];
-                  const Icon = done ? CheckCircle2 : Clock3;
-                  return (
-                    <div key={step.key} className="flex gap-3">
-                      <Icon
-                        className={cn('mt-0.5 h-4 w-4 shrink-0', done ? 'text-primary' : 'text-muted-foreground')}
-                        aria-hidden
-                      />
-                      <div>
-                        <p className="font-medium">{step.title}</p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">{step.description}</p>
-                      </div>
-                    </div>
-                  );
-                })
-              : (
-                <p className="text-sm text-muted-foreground">{t('launchCompleteHint')}</p>
-              )}
-            <div className="pt-2">
-              <Button nativeButton={false} variant="outline" size="sm" render={<Link href="/dashboard/setup" />}>
-                {t('openSetupChecklist')}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-        ) : null}
+      {!isStaff ? <AiControls canManage={canManageFirm} /> : null}
 
-        {isOwner || isLawyer ? (
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Bot className="h-4 w-4 text-primary" /> {t('safetyRules')}
-              </CardTitle>
-              <CardDescription>{t('automationAssists')}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 text-sm">
-              {guardrails.map((guardrail) => (
-                <div key={guardrail.title} className="flex gap-3">
-                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
-                  <div>
-                    <p className="font-medium" lang={dir === 'rtl' ? 'ur' : 'en'}>
-                      {dir === 'rtl' ? guardrail.urdu : guardrail.title}
-                    </p>
-                    {dir === 'rtl' && (
-                      <p lang="en" className="mt-0.5 text-xs text-muted-foreground">{guardrail.title}</p>
-                    )}
-                    <p className="mt-0.5 text-xs text-muted-foreground">{guardrail.detail}</p>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-        ) : null}
-      </div>
-
-      {!connected && canManageFirm ? (
-        <Card className="border-primary/20 bg-primary/5 ring-primary/20">
-          <CardContent className="flex flex-col gap-4 pt-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-medium">{t('readyToConnect')}</p>
-              <p className="text-sm text-muted-foreground">
-                {t('scanQrCode')}
-              </p>
-            </div>
-            <Button nativeButton={false} render={<Link href="/dashboard/setup" />}>
-              {t('connectWhatsapp')}
+      {canManageFirm && !launchDone && profile.isSuccess ? (
+        <Panel
+          title={t('launchPath')}
+          meta={`${launchCompleted} / ${launchSteps.length}`}
+          action={
+            <Button nativeButton={false} variant="outline" size="sm" className="h-8" render={<Link href="/dashboard/setup" />}>
+              {t('openSetupChecklist')}
             </Button>
-          </CardContent>
-        </Card>
+          }
+          bodyClassName="p-4"
+        >
+          <Meter value={launchCompleted} max={launchSteps.length} />
+          <ol className="mt-4 grid gap-3 sm:grid-cols-2">
+            {launchSteps.map((step) => (
+              <li key={step.key} className="flex gap-2.5">
+                <Signal level={launchState[step.key] ? 'ok' : 'info'} className="mt-1">
+                  <span className="sr-only">{launchState[step.key] ? t('demoDone') : ''}</span>
+                </Signal>
+                <div>
+                  <p className="text-[13px] font-medium">{step.title}</p>
+                  <p className="text-xs text-muted-foreground">{step.description}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </Panel>
       ) : null}
     </div>
   );
