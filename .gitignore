@@ -24,3 +24,6 @@ generated/
 # Local debugging artifacts
 .dbg/
 debug-*.md
+
+# Vercel CLI link
+.vercel
