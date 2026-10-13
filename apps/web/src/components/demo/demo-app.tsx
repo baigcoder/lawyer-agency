@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { DemoContext, type DemoContextValue } from '@/components/demo/demo-context';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { ArrowRight, Volume2, VolumeX } from 'lucide-react';
+import { ArrowRight, LogOut, Volume2, VolumeX } from 'lucide-react';
 import { DemoBoot } from '@/components/demo/demo-boot';
 import { DemoView } from '@/components/demo/views';
 import { LanguageToggle } from '@/components/language-toggle';
@@ -338,12 +338,24 @@ export function DemoApp() {
       {!booted ? <DemoBoot sound={sound} onSoundChange={setSound} onDone={finishBoot} /> : null}
 
       <div className="flex min-h-svh flex-col bg-background" dir={dir} aria-hidden={!booted || undefined}>
-        <div className="flex h-9 items-center justify-center gap-3 border-b border-border bg-sunken px-4 text-xs">
-          <span className="docket truncate text-muted-foreground">{t('demoRibbon')}</span>
-          <Link href="/sign-up" className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap font-medium text-primary hover:underline">
-            {t('startPilot')}
-            <ArrowRight className="size-3 rtl:rotate-180" aria-hidden />
-          </Link>
+        <div className="flex h-9 items-center justify-between gap-3 border-b border-border bg-sunken px-4 text-xs">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="live-ping size-1.5 shrink-0 rounded-full bg-attention" aria-hidden />
+            <span className="docket truncate text-muted-foreground">{t('demoRibbon')}</span>
+          </div>
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-0.5 text-xs font-medium text-foreground/80 transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <LogOut className="size-3 rtl:rotate-180" aria-hidden />
+              <span className={cn(dir === 'rtl' && 'font-urdu')}>{t('exitDemo')}</span>
+            </Link>
+            <Link href="/sign-up" className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap font-medium text-primary hover:underline">
+              {t('startPilot')}
+              <ArrowRight className="size-3 rtl:rotate-180" aria-hidden />
+            </Link>
+          </div>
         </div>
 
         <div className="flex min-h-0 flex-1">
@@ -377,7 +389,7 @@ export function DemoApp() {
                 <span className="text-muted-foreground/50" aria-hidden>/</span>
                 <span className={cn('truncate text-[13px] font-medium', dir === 'rtl' && 'font-urdu')}>{t(view)}</span>
               </nav>
-              <div className="ms-auto flex items-center gap-1">
+              <div className="ms-auto flex items-center gap-1 sm:gap-1.5">
                 <span className="me-2 hidden items-center gap-2 rounded-full bg-primary/8 px-2.5 py-1 ring-1 ring-primary/20 md:flex">
                   <span className="live-ping size-1.5 rounded-full bg-primary" aria-hidden />
                   <span className="font-mono text-[11px] tabular-nums text-foreground/80">{FIRM.whatsapp}</span>
@@ -385,6 +397,15 @@ export function DemoApp() {
                 {soundToggle}
                 <LanguageToggle />
                 <ThemeToggle />
+                <Link
+                  href="/"
+                  className="ms-1 inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                  title={t('exitDemo')}
+                  aria-label={t('exitDemo')}
+                >
+                  <LogOut className="size-3.5 rtl:rotate-180" aria-hidden />
+                  <span className={cn('hidden sm:inline', dir === 'rtl' && 'font-urdu')}>{t('exitDemo')}</span>
+                </Link>
                 <span className="ms-1.5 hidden items-center gap-2 sm:flex">
                   <PersonAvatar initials="SQ" firm />
                 </span>
@@ -402,7 +423,22 @@ export function DemoApp() {
           active={view}
           badges={badges}
           onSelect={(next) => go(next)}
-          sheetFooter={<div className="flex items-center gap-2">{soundToggle}<LanguageToggle /><ThemeToggle /></div>}
+          sheetFooter={
+            <div className="flex w-full items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                {soundToggle}
+                <LanguageToggle />
+                <ThemeToggle />
+              </div>
+              <Link
+                href="/"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <LogOut className="size-3.5 rtl:rotate-180" aria-hidden />
+                <span className={cn(dir === 'rtl' && 'font-urdu')}>{t('exitDemo')}</span>
+              </Link>
+            </div>
+          }
         />
       </div>
     </DemoContext.Provider>

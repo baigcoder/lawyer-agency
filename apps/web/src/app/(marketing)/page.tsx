@@ -3,13 +3,22 @@
 import Link from 'next/link';
 import {
   ArrowRight,
+  Check,
+  CheckCheck,
+  Clock,
+  FileCheck,
   FileText,
   ImageIcon,
+  Lock,
   Mic,
   Phone,
   PhoneMissed,
+  Play,
   Plus,
+  Scale,
+  ShieldAlert,
   ShieldCheck,
+  Sparkles,
 } from 'lucide-react';
 import { ApprovalGate } from '@/components/approval-gate';
 import { AttentionRow } from '@/components/attention-row';
@@ -89,21 +98,21 @@ export default function Home() {
         <Section id="intelligence" labelledBy="act3-title" innerClassName="grid grid-cols-1 gap-14 lg:grid-cols-2 lg:items-center lg:gap-20">
           <div>
             <SectionHeading id="act3-title" index="03" eyebrow={t('lpAct3Label')} title={t('lpAct3Title')} urdu={isRtl} />
-            <dl className="mt-10 divide-y divide-border border-y border-border">
+            <ol className="mt-10 divide-y divide-border border-y border-border">
               {[
                 [t('whatIsWakeelPoint2Title'), t('whatIsWakeelPoint2Desc')],
                 [t('feature3Title'), t('feature3Desc')],
                 [t('feature2Title'), t('feature2Desc')],
               ].map(([title, desc], i) => (
-                <div key={title} className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-x-2 py-5">
+                <li key={title} className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-x-2 py-5">
                   <span className="docket pt-1 text-primary">0{i + 1}</span>
                   <div>
-                    <dt className={cn('font-semibold', urdu)}>{title}</dt>
-                    <dd className={cn('mt-1.5 text-sm leading-6 text-muted-foreground', urdu)}>{desc}</dd>
+                    <h3 className={cn('font-semibold', urdu)}>{title}</h3>
+                    <p className={cn('mt-1.5 text-sm leading-6 text-muted-foreground', urdu)}>{desc}</p>
                   </div>
-                </div>
+                </li>
               ))}
-            </dl>
+            </ol>
           </div>
           <IntelligenceProof />
         </Section>
@@ -179,19 +188,51 @@ export default function Home() {
               ))}
             </ol>
           </div>
-          <dl className="mt-16 grid grid-cols-1 gap-px overflow-hidden rounded-xl bg-border ring-1 ring-border md:grid-cols-3">
-            {[
-              [t('lpRule1T'), t('lpRule1D')],
-              [t('lpRule2T'), t('lpRule2D')],
-              [t('lpRule3T'), t('lpRule3D')],
-            ].map(([title, desc], i) => (
-              <div key={title} className="bg-background p-6">
-                <span className="docket text-muted-foreground">0{i + 1}</span>
-                <dt className={cn('mt-3 font-semibold', urdu)}>{title}</dt>
-                <dd className={cn('mt-1.5 text-sm leading-6 text-muted-foreground', urdu)}>{desc}</dd>
-              </div>
-            ))}
-          </dl>
+          <div className="mt-16">
+            <div className="mb-6 flex items-center justify-between border-b border-border pb-3">
+              <span className="docket text-primary font-semibold">The Three Chambers Covenants</span>
+              <span className="docket text-muted-foreground">Constitutional AI Boundaries · Firm Enforced</span>
+            </div>
+            <ol className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              {[
+                {
+                  covenant: 'Covenant 01',
+                  badge: 'Human Sign-off',
+                  title: t('lpRule1T'),
+                  desc: t('lpRule1D'),
+                  detail: 'Strict Meta 24h & firm guardrails — no unapproved messages leave the chambers.',
+                },
+                {
+                  covenant: 'Covenant 02',
+                  badge: 'Statutory Bypass',
+                  title: t('lpRule2T'),
+                  desc: t('lpRule2D'),
+                  detail: 'Immediate escalation to designated associate — automation completely stops.',
+                },
+                {
+                  covenant: 'Covenant 03',
+                  badge: 'Cryptographic Audit',
+                  title: t('lpRule3T'),
+                  desc: t('lpRule3D'),
+                  detail: 'Immutable log of drafts, approvals, edits, and sends with user IDs and timestamps.',
+                },
+              ].map((item, i) => (
+                <li key={item.title} className="rounded-xl border border-border bg-card p-6 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="docket text-primary">0{i + 1} · {item.covenant}</span>
+                    <span className="rounded bg-muted px-2 py-0.5 text-[11px] font-medium text-foreground/80">
+                      {item.badge}
+                    </span>
+                  </div>
+                  <h3 className={cn('mt-3 text-base font-semibold', urdu)}>{item.title}</h3>
+                  <p className={cn('mt-2 text-sm leading-relaxed text-muted-foreground', urdu)}>{item.desc}</p>
+                  <p className="mt-4 border-t border-dashed border-border/80 pt-3 font-mono text-[11px] text-foreground/75 font-medium">
+                    {item.detail}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          </div>
         </Section>
 
         {/* ── ACT 07 · Security ───────────────────────────────────────── */}
@@ -298,8 +339,22 @@ function Hero() {
               <span className={urdu}>{t('viewDemo')}</span>
             </Button>
           </div>
+          <div className="mt-8 flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary ring-1 ring-primary/25">
+              <ShieldCheck className="size-3.5" aria-hidden="true" />
+              <span>High Court & Bar Council Compliant</span>
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
+              <Lock className="size-3 text-muted-foreground" aria-hidden="true" />
+              <span>Postgres RLS · Tenant Isolated</span>
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-medium text-foreground/80 ring-1 ring-border">
+              <Clock className="size-3 text-muted-foreground" aria-hidden="true" />
+              <span>Meta Cloud WhatsApp 24/7</span>
+            </span>
+          </div>
           <Docket
-            className="mt-9 border-t border-border pt-5"
+            className="mt-6 border-t border-border pt-4"
             items={[t('lpHeroLangs'), t('lpHeroUrgent'), t('lpHeroNoAdvice')]}
           />
         </div>
@@ -314,54 +369,160 @@ function Hero() {
 }
 
 /** ACT 01 — the messy inputs clients already send. */
+/** ACT 01 — the authentic WhatsApp legal evidence artifacts. */
 function InboundStrip() {
   const { t, dir } = useLanguage();
   const urdu = dir === 'rtl' ? 'font-urdu' : undefined;
 
-  const items = [
-    { icon: Mic, label: t('lpInVoice'), body: <Waveform />, time: '23:58' },
-    { icon: ImageIcon, label: t('lpInPhoto'), body: <span className="font-mono text-xs">FIR_412_PS_Gulberg.jpg</span>, time: '23:59' },
-    { icon: null, label: 'Roman Urdu', body: <span dir="ltr">Sir consultation fee kitni hai?</span>, time: '00:04' },
-    { icon: null, label: 'اردو', body: <span dir="rtl" className="font-urdu leading-[2]">کیا آپ کل وقت دے سکتے ہیں؟</span>, time: '00:07' },
-    { icon: PhoneMissed, label: t('lpInCall'), body: <span className="font-mono text-xs">+92 321 •••• 870</span>, time: '00:11' },
-  ];
-
   return (
-    <ul className="mx-auto mt-14 grid grid-cols-1 max-w-5xl gap-3 sm:grid-cols-2 lg:grid-cols-5" aria-label={t('lpAct1Label')}>
-      {items.map((item, i) => (
-        <li
-          key={item.label}
-          className={cn(
-            'scroll-reveal flex flex-col gap-3 rounded-xl bg-card p-4 ring-1 ring-border',
-            i % 2 === 1 && 'lg:translate-y-6',
-          )}
-        >
-          <div className="flex items-center justify-between gap-2">
-            <span className={cn('flex items-center gap-1.5 text-xs text-muted-foreground', urdu)}>
-              {item.icon ? <item.icon className="size-3.5" aria-hidden /> : <WhatsappGlyph className="size-3.5 text-[#128c4a] dark:text-[#3fe07f]" />}
-              {item.label}
-            </span>
-            <span className="docket text-muted-foreground">{item.time}</span>
+    <div className="mx-auto mt-14 max-w-5xl" aria-label={t('lpAct1Label')}>
+      <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        {/* 01: Voice Note */}
+        <li className="scroll-reveal flex flex-col justify-between rounded-xl bg-card p-4 ring-1 ring-border shadow-sm transition-all hover:shadow-md">
+          <div>
+            <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-2.5">
+              <span className={cn('flex items-center gap-1.5 text-xs font-medium text-primary', urdu)}>
+                <Mic className="size-3.5 text-primary" aria-hidden="true" />
+                <span>{t('lpInVoice')}</span>
+              </span>
+              <span className="font-mono text-[11px] text-muted-foreground">23:58</span>
+            </div>
+            <div className="mt-3">
+              <div className="flex items-center gap-2 rounded-lg bg-sunken p-2 ring-1 ring-border/50">
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
+                  <Play className="ms-0.5 size-3 fill-current" aria-hidden="true" />
+                </span>
+                <Waveform />
+              </div>
+              <p className="mt-2 text-[12px] leading-relaxed text-muted-foreground">
+                <span className="font-medium text-foreground">Transcript:</span> &ldquo;Bhai kal raat se police custody mein hain Cantt courts…&rdquo;
+              </p>
+            </div>
           </div>
-          <div className="min-h-9 text-sm">{item.body}</div>
+          <div className="mt-3 border-t border-border/50 pt-2 text-[11px]">
+            <span className="docket text-primary">Speech-to-Text · Indexed</span>
+          </div>
         </li>
-      ))}
-    </ul>
+
+        {/* 02: FIR Photo */}
+        <li className="scroll-reveal flex flex-col justify-between rounded-xl bg-card p-4 ring-1 ring-border shadow-sm transition-all hover:shadow-md lg:translate-y-4">
+          <div>
+            <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-2.5">
+              <span className={cn('flex items-center gap-1.5 text-xs font-medium text-foreground', urdu)}>
+                <ImageIcon className="size-3.5 text-[#25d366]" aria-hidden="true" />
+                <span>{t('lpInPhoto')}</span>
+              </span>
+              <span className="font-mono text-[11px] text-muted-foreground">23:59</span>
+            </div>
+            <div className="mt-3 rounded-lg border border-border/80 bg-background/90 p-2.5">
+              <div className="flex items-center justify-between border-b border-dashed border-border/80 pb-1.5">
+                <span className="font-mono text-xs font-semibold text-foreground">FIR 412/26</span>
+                <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
+                  Non-Bailable
+                </span>
+              </div>
+              <p className="mt-1.5 text-[11px] font-medium text-foreground/80">PS Gulberg · Lahore</p>
+              <p className="font-mono text-[10px] text-muted-foreground">Sec 420 / 468 / 471 PPC</p>
+            </div>
+          </div>
+          <div className="mt-3 border-t border-border/50 pt-2 text-[11px]">
+            <span className="docket text-attention">OCR Extracted · Urgent</span>
+          </div>
+        </li>
+
+        {/* 03: Roman Urdu */}
+        <li className="scroll-reveal flex flex-col justify-between rounded-xl bg-card p-4 ring-1 ring-border shadow-sm transition-all hover:shadow-md">
+          <div>
+            <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-2.5">
+              <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <WhatsappGlyph className="size-3.5 text-[#25d366]" />
+                <span>Roman Urdu</span>
+              </span>
+              <span className="font-mono text-[11px] text-muted-foreground">00:04</span>
+            </div>
+            <div className="mt-3">
+              <div className="rounded-xl rounded-ss-sm bg-sunken p-2.5 text-[12.5px] leading-relaxed ring-1 ring-border/50">
+                <p dir="ltr">&ldquo;Sir consultation fee kitni hai aur Saturday ko office open hota hai?&rdquo;</p>
+                <div className="mt-1.5 flex items-center justify-end gap-1 text-[10px] text-muted-foreground">
+                  <span>00:04</span>
+                  <CheckCheck className="size-3 text-primary" aria-hidden="true" />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 border-t border-border/50 pt-2 text-[11px]">
+            <span className="docket text-foreground/80">Intent: Retainer Inquiry</span>
+          </div>
+        </li>
+
+        {/* 04: Urdu Nastaliq */}
+        <li className="scroll-reveal flex flex-col justify-between rounded-xl bg-card p-4 ring-1 ring-border shadow-sm transition-all hover:shadow-md lg:translate-y-4">
+          <div>
+            <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-2.5">
+              <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <WhatsappGlyph className="size-3.5 text-[#25d366]" />
+                <span className="font-urdu">اردو سائل</span>
+              </span>
+              <span className="font-mono text-[11px] text-muted-foreground">00:07</span>
+            </div>
+            <div className="mt-3">
+              <div className="rounded-xl rounded-ss-sm bg-sunken p-2.5 text-[12.5px] ring-1 ring-border/50">
+                <p dir="rtl" className="font-urdu text-[13px] leading-[2.1] text-foreground">
+                  کیا آپ کل کینٹ کچہری میں ضمانت کے لیے دستیاب ہیں؟
+                </p>
+                <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-muted-foreground">
+                  <span>00:07</span>
+                  <CheckCheck className="size-3 text-primary" aria-hidden="true" />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 border-t border-border/50 pt-2 text-[11px]">
+            <span className="docket text-foreground/80">پیشی · کینٹ عدالت</span>
+          </div>
+        </li>
+
+        {/* 05: Missed Call Auto-Triage */}
+        <li className="scroll-reveal flex flex-col justify-between rounded-xl bg-card p-4 ring-1 ring-border shadow-sm transition-all hover:shadow-md">
+          <div>
+            <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-2.5">
+              <span className={cn('flex items-center gap-1.5 text-xs font-medium text-destructive', urdu)}>
+                <PhoneMissed className="size-3.5" aria-hidden="true" />
+                <span>{t('lpInCall')}</span>
+              </span>
+              <span className="font-mono text-[11px] text-muted-foreground">00:11</span>
+            </div>
+            <div className="mt-3">
+              <div className="rounded-lg bg-primary/[0.08] p-2.5 ring-1 ring-primary/20">
+                <p className="font-mono text-xs font-semibold text-foreground">+92 321 •••• 870</p>
+                <p className="mt-1 text-[11px] leading-tight text-primary font-medium">
+                  Instant WhatsApp Intake Follow-up Dispatched
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 border-t border-border/50 pt-2 text-[11px]">
+            <span className="docket text-primary">Zero Missed Leads</span>
+          </div>
+        </li>
+      </ul>
+    </div>
   );
 }
 
 function Waveform() {
-  const bars = [3, 6, 9, 5, 11, 7, 4, 8, 12, 6, 3, 7, 10, 5, 8, 4, 6, 9, 3, 5];
+  const bars = [4, 7, 10, 6, 12, 8, 5, 9, 13, 7, 4, 8, 11, 6, 9, 5, 7, 10, 4, 6];
   return (
-    <span className="flex h-9 items-center gap-[3px]" aria-hidden>
+    <span className="flex h-7 items-center gap-[2.5px]" aria-hidden="true">
       {bars.map((h, i) => (
-        <span key={i} className="w-[3px] rounded-full bg-primary/70" style={{ height: `${h * 2.5}px` }} />
+        <span key={i} className="w-[2.5px] rounded-full bg-primary/80" style={{ height: `${h * 1.8}px` }} />
       ))}
-      <span className="ms-2 font-mono text-xs text-muted-foreground">0:48</span>
+      <span className="ms-1.5 font-mono text-[11px] text-muted-foreground">0:48</span>
     </span>
   );
 }
 
+/** ACT 02 — the five-stage transformation, each stage a real product fragment. */
 /** ACT 02 — the five-stage transformation, each stage a real product fragment. */
 function FormationRail() {
   const { t, dir } = useLanguage();
@@ -372,26 +533,36 @@ function FormationRail() {
     {
       title: t('lpF1T'),
       desc: t('lpF1D'),
+      badge: 'Step 01',
       body: (
-        <p dir="ltr" className="rounded-xl rounded-ss-sm bg-background px-3 py-2 text-start text-[12.5px] leading-[1.55] ring-1 ring-border">
-          {m.thread.c1}
-        </p>
+        <div className="space-y-2">
+          <p dir="ltr" className="rounded-xl rounded-ss-sm bg-background px-3 py-2 text-start text-[12.5px] leading-relaxed ring-1 ring-border">
+            {m.thread.c1}
+          </p>
+          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+            <span className="flex items-center gap-1 font-mono">
+              <WhatsappGlyph className="size-3 text-[#25d366]" /> +92 300 412
+            </span>
+            <span className="font-mono">23:42</span>
+          </div>
+        </div>
       ),
     },
     {
       title: t('lpF2T'),
       desc: t('lpF2D'),
+      badge: 'Step 02',
       body: (
-        <dl className="space-y-1.5 text-[12.5px]">
+        <dl className="space-y-2 rounded-lg bg-background p-2.5 text-[12px] ring-1 ring-border">
           {[
             [t('mfClient'), m.client],
-            [t('mfCity'), t('mfLahore')],
-            [t('mfFir'), '412/26'],
-            [t('mfNextDate'), t('mfTomorrow')],
+            ['Police station', 'PS Gulberg'],
+            [t('mfFir'), '412/26 (Sec 420 PPC)'],
+            [t('mfNextDate'), 'Tomorrow 09:00 · Cantt'],
           ].map(([k, v]) => (
-            <div key={k} className="flex justify-between gap-2 border-b border-dashed border-border pb-1.5">
+            <div key={k} className="flex justify-between gap-2 border-b border-dashed border-border/80 pb-1.5 last:border-0 last:pb-0">
               <dt className={cn('text-muted-foreground', urdu)}>{k}</dt>
-              <dd className={cn('font-medium', urdu)}>{v}</dd>
+              <dd className={cn('font-medium text-foreground', urdu)}>{v}</dd>
             </div>
           ))}
         </dl>
@@ -400,63 +571,106 @@ function FormationRail() {
     {
       title: t('lpF3T'),
       desc: t('lpF3D'),
+      badge: 'Step 03',
       body: (
-        <div className="rounded-lg bg-background p-3 ring-1 ring-border">
-          <p className="font-mono text-base font-medium tracking-tight">{m.reference}</p>
-          <Docket className="mt-1" items={[t('mfCriminal'), 'LHR', t('mfIntake')]} />
+        <div className="space-y-2">
+          <div className="rounded-lg bg-background p-3 ring-1 ring-border">
+            <div className="flex items-center justify-between">
+              <p className="font-mono text-base font-semibold tracking-tight text-foreground">{m.reference}</p>
+              <span className="rounded bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">Priority A</span>
+            </div>
+            <Docket className="mt-1.5" items={[t('mfCriminal'), 'LHC Bench III', t('mfIntake')]} />
+          </div>
+          <p className="font-mono text-[11px] text-muted-foreground">Chambers Reference Assigned</p>
         </div>
       ),
     },
     {
       title: t('lpF4T'),
       desc: t('lpF4D'),
+      badge: 'Step 04',
       body: (
-        <div className="space-y-2">
-          <Signal level="critical">{t('mfUrgent')}</Signal>
-          {[t('mfDocFir'), t('mfDocCnic')].map((d) => (
-            <p key={d} className="flex items-center gap-1.5 text-[12.5px]">
-              <FileText className="size-3.5 text-muted-foreground" aria-hidden />
-              <span className={cn('flex-1', urdu)}>{d}</span>
-              <span className="docket text-attention">{t('mfRequested')}</span>
-            </p>
-          ))}
+        <div className="space-y-2.5 rounded-lg bg-background p-2.5 ring-1 ring-border">
+          <div className="flex items-center justify-between">
+            <Signal level="critical">{t('mfUrgent')}</Signal>
+            <span className="font-mono text-[11px] text-critical">Bail &lt; 24h</span>
+          </div>
+          <div className="space-y-1.5 border-t border-border/60 pt-2">
+            {[
+              { doc: 'FIR copy (PS Gulberg)', status: 'Attached ✓', ok: true },
+              { doc: 'CNIC of accused', status: 'Requested ⧖', ok: false },
+              { doc: 'Vakalatnama signing', status: 'Required !', ok: false },
+            ].map((d) => (
+              <p key={d.doc} className="flex items-center justify-between gap-1.5 text-[11.5px]">
+                <span className="truncate text-muted-foreground">{d.doc}</span>
+                <span className={cn('font-mono text-[10px] font-medium', d.ok ? 'text-primary' : 'text-attention')}>
+                  {d.status}
+                </span>
+              </p>
+            ))}
+          </div>
         </div>
       ),
     },
     {
       title: t('lpF5T'),
       desc: t('lpF5D'),
+      badge: 'Step 05',
       body: (
-        <div className="flex items-center gap-2.5 rounded-lg bg-primary/[0.07] p-2.5 ring-1 ring-primary/20">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground">
-            {m.lawyerInitials}
-          </span>
-          <div className="min-w-0">
-            <p className="truncate text-[13px] font-medium">{m.lawyer}</p>
-            <p className={cn('text-xs text-primary', urdu)}>{t('mfBriefReady')}</p>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2.5 rounded-lg bg-primary/[0.08] p-3 ring-1 ring-primary/25">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground shadow-sm">
+              {m.lawyerInitials}
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-semibold text-foreground">{m.lawyer}</p>
+              <p className="text-[11px] text-muted-foreground">Advocate High Court</p>
+              <p className={cn('mt-0.5 text-xs font-medium text-primary', urdu)}>{t('mfBriefReady')}</p>
+            </div>
           </div>
+          <p className="font-mono text-[11px] text-muted-foreground">Direct SMS / Push Notification</p>
         </div>
       ),
     },
   ];
 
   return (
-    <ol className="mt-14 grid grid-cols-1 gap-px overflow-hidden rounded-2xl bg-border ring-1 ring-border md:grid-cols-2 lg:grid-cols-5">
-      {stages.map((stage, i) => (
-        <li key={stage.title} className="scroll-reveal flex flex-col bg-card p-5" style={{ animationDelay: `${i * 60}ms` }}>
-          <div className="flex items-center gap-2">
-            <span className="docket text-primary">0{i + 1}</span>
-            {i < stages.length - 1 ? <span aria-hidden className="h-px flex-1 bg-gradient-to-r from-primary/40 to-transparent rtl:bg-gradient-to-l" /> : null}
+    <div className="mt-14">
+      {/* Visual Pipeline Track */}
+      <div className="mb-4 hidden items-center justify-between px-6 lg:flex" aria-hidden="true">
+        {stages.map((s, idx) => (
+          <div key={s.badge} className="flex flex-1 items-center">
+            <div className="flex items-center gap-2">
+              <span className="flex size-6 items-center justify-center rounded-full bg-primary text-xs font-mono font-semibold text-primary-foreground shadow-sm">
+                0{idx + 1}
+              </span>
+              <span className="docket text-muted-foreground">{s.badge}</span>
+            </div>
+            {idx < stages.length - 1 ? (
+              <div className="mx-3 h-0.5 flex-1 bg-gradient-to-r from-primary/50 to-primary/10 rtl:bg-gradient-to-l" />
+            ) : null}
           </div>
-          <h3 className={cn('mt-3 font-semibold', urdu)}>{stage.title}</h3>
-          <p className={cn('mt-1 text-sm leading-6 text-muted-foreground', urdu)}>{stage.desc}</p>
-          <div className="mt-5 flex-1">{stage.body}</div>
-        </li>
-      ))}
-    </ol>
+        ))}
+      </div>
+
+      <ol className="grid grid-cols-1 gap-px overflow-hidden rounded-2xl bg-border ring-1 ring-border md:grid-cols-2 lg:grid-cols-5">
+        {stages.map((stage, i) => (
+          <li key={stage.title} className="scroll-reveal flex flex-col bg-card p-5" style={{ animationDelay: `${i * 60}ms` }}>
+            <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-3">
+              <span className="docket text-primary font-semibold">0{i + 1}</span>
+              <span className="font-mono text-[11px] text-muted-foreground">{stage.badge}</span>
+            </div>
+            <h3 className={cn('mt-3 font-semibold text-foreground', urdu)}>{stage.title}</h3>
+            <p className={cn('mt-1 text-sm leading-6 text-muted-foreground', urdu)}>{stage.desc}</p>
+            <div className="mt-5 flex-1">{stage.body}</div>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }
 
+/** ACT 03 — a grounded FAQ answer and an urgency trigger, as they appear in the inbox. */
 /** ACT 03 — a grounded FAQ answer and an urgency trigger, as they appear in the inbox. */
 function IntelligenceProof() {
   const { t, dir } = useLanguage();
@@ -464,10 +678,14 @@ function IntelligenceProof() {
 
   return (
     <div className="space-y-4">
-      <div className="matter-frame overflow-hidden rounded-2xl bg-card">
-        <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-          <Docket items={['Sana Ahmed', '+92 333 •••• 118']} className="text-foreground/80" />
-          <span className="docket text-muted-foreground">10:12</span>
+      {/* Knowledge Grounding Card */}
+      <div className="matter-frame overflow-hidden rounded-2xl bg-card ring-1 ring-border">
+        <div className="flex items-center justify-between border-b border-border bg-card px-4 py-2.5">
+          <div className="flex items-center gap-2">
+            <span className="size-2 rounded-full bg-primary" aria-hidden="true" />
+            <Docket items={['Sana Ahmed', '+92 333 •••• 118']} className="text-foreground/80" />
+          </div>
+          <span className="docket text-muted-foreground">10:12 AM</span>
         </div>
         <div className="space-y-3 bg-sunken p-4">
           <p dir="ltr" className="w-fit max-w-[88%] rounded-xl rounded-ss-sm bg-card px-3 py-2 text-start text-[13px] leading-relaxed ring-1 ring-border">
@@ -477,24 +695,44 @@ function IntelligenceProof() {
             <p dir="ltr" className="rounded-xl rounded-se-sm bg-[var(--wa-firm)] px-3 py-2 text-start text-[13px] leading-relaxed ring-1 ring-primary/15">
               Consultation fee PKR 5,000 hai. Office Saturday ko 10 se 2 baje tak khula hai. Kya main aap ke liye waqt book karoon?
             </p>
-            <div className="mt-2 flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+            <div className="mt-2.5 flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
               <span className={cn('text-xs text-muted-foreground', urdu)}>{t('lpSentAuto')}</span>
-              <span className="docket rounded bg-card px-1.5 py-0.5 text-foreground/80 ring-1 ring-border">
-                {t('lpSource')} · {t('lpSourceValue')}
+              <span className="docket rounded bg-card px-2 py-0.5 text-foreground/80 ring-1 ring-border font-medium">
+                {t('lpSource')} · Al-Madad Retainer Schedule (Rule 4.2)
               </span>
             </div>
           </div>
         </div>
+        <div className="border-t border-border/80 bg-background/80 px-4 py-2 text-[11px] text-muted-foreground flex items-center justify-between">
+          <span className="flex items-center gap-1.5">
+            <FileCheck className="size-3.5 text-primary" aria-hidden="true" />
+            <span>Verified from Firm-Approved Schedule · Zero Hallucinated Advice</span>
+          </span>
+          <span className="docket text-primary font-mono">100% Policy Bound</span>
+        </div>
       </div>
 
-      <div className="matter-frame flex items-center gap-4 rounded-2xl bg-card p-4">
-        <div className="min-w-0 flex-1">
-          <Signal level="critical">{t('lpTrigger')}</Signal>
-          <p className={cn('mt-1.5 text-sm text-muted-foreground', urdu)}>{t('lpTriggerMeta')}</p>
-        </div>
-        <div className="shrink-0 text-end">
-          <p className="docket text-muted-foreground">SLA</p>
-          <p className="font-mono text-lg font-medium tabular-nums text-critical">14:52</p>
+      {/* Urgency Trigger Alert */}
+      <div className="matter-frame overflow-hidden rounded-2xl border-l-4 border-l-destructive bg-card p-4 ring-1 ring-border shadow-sm">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2.5 w-2.5" aria-hidden="true">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-75" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-destructive" />
+              </span>
+              <Signal level="critical">{t('lpTrigger')} (Sec 420/468/471 PPC)</Signal>
+            </div>
+            <p className={cn('mt-2 text-sm text-foreground/90 font-medium', urdu)}>{t('lpTriggerMeta')}</p>
+            <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+              FIR 412/26 · Production before Cantt Judicial Magistrate tomorrow 09:00 AM
+            </p>
+          </div>
+          <div className="shrink-0 text-end">
+            <p className="docket text-muted-foreground">Emergency SLA</p>
+            <p className="font-mono text-xl font-bold tabular-nums text-critical">14:52</p>
+            <span className="docket text-destructive font-mono text-[10px]">Active Countdown</span>
+          </div>
         </div>
       </div>
     </div>
@@ -538,19 +776,29 @@ function VoiceCallCard() {
 }
 
 /** ACT 04 — the real HandoffBriefView component rendering the demo matter. */
+/** ACT 04 — the real HandoffBriefView component rendering the demo matter. */
 function HandoffFrame() {
   const { t, dir } = useLanguage();
   const urdu = dir === 'rtl' ? 'font-urdu' : undefined;
   const m = DEMO_MATTER;
 
   return (
-    <div className="matter-frame overflow-hidden rounded-2xl bg-card">
+    <div className="matter-frame overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-border">
+      {/* Chamber Official Header */}
+      <div className="border-b border-border bg-sunken/60 px-5 py-2 text-[11px] flex items-center justify-between">
+        <span className="docket text-muted-foreground tracking-wider font-semibold">
+          CHAMBER MEMORANDUM · PRIVILEGED ATTORNEY-CLIENT WORK PRODUCT
+        </span>
+        <span className="font-mono text-muted-foreground text-[10px]">
+          LHC · Single Bench III · Cantt Courts
+        </span>
+      </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-5 py-3.5">
         <Signal level="critical">{t('escTriggerACTIVE_ARREST')}</Signal>
-        <Docket items={[m.reference, m.client, t('mfLahore')]} className="text-foreground/80" />
+        <Docket items={[m.reference, m.client, t('mfLahore')]} className="text-foreground/80 font-medium" />
         <span className="ms-auto flex items-center gap-3">
-          <span className="font-mono text-sm tabular-nums text-critical">SLA 12:41</span>
-          <Button size="sm" className="h-8" tabIndex={-1} aria-hidden>
+          <span className="font-mono text-sm font-semibold tabular-nums text-critical">SLA 12:41</span>
+          <Button size="sm" className="h-8 px-3 font-medium" tabIndex={-1} aria-hidden>
             <span className={urdu}>{t('escAckClaim')}</span>
           </Button>
         </span>
@@ -563,12 +811,26 @@ function HandoffFrame() {
 }
 
 /** ACT 05 — the command center, using the same AttentionRow as the dashboard. */
+/** ACT 05 — the command center, using the same AttentionRow as the dashboard. */
 function CommandPreview() {
   const { t, dir } = useLanguage();
   const urdu = dir === 'rtl' ? 'font-urdu' : undefined;
 
   return (
     <div className="mt-12 overflow-hidden rounded-2xl bg-background shadow-[var(--shadow-frame)] ring-1 ring-border">
+      {/* Live Chambers Operations Ticker */}
+      <div className="border-b border-border/80 bg-sunken/50 px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="live-ping size-2 rounded-full bg-primary" aria-hidden="true" />
+          <span className="docket text-foreground font-semibold">Lahore High Court Cause List Synced</span>
+          <span className="text-muted-foreground/60" aria-hidden="true">·</span>
+          <span className="text-muted-foreground text-[11px]">3 Cantt Court Hearings Today</span>
+        </div>
+        <div className="flex items-center gap-3 font-mono text-[11px] text-muted-foreground">
+          <span>Active Matters: 14</span>
+          <span>Bail Urgency: 0 Breaches</span>
+        </div>
+      </div>
       <div className="flex items-center gap-2 border-b border-border bg-card px-4 py-2.5">
         <span className="size-2.5 rounded-full bg-muted-foreground/30" />
         <span className="size-2.5 rounded-full bg-muted-foreground/30" />
@@ -635,6 +897,10 @@ function CommandPreview() {
               <span className="bg-primary" style={{ width: '73%' }} />
             </div>
             <Docket className="mt-2" items={[`15 ${t('lpToLawyers')}`, `4 ${t('escalations')}`]} />
+            <div className="mt-4 border-t border-border/80 pt-3 text-[11px] text-muted-foreground">
+              <span className="docket">Practice Distribution: </span>
+              <span className="font-mono text-foreground/80">Criminal 45% · Property 35% · Family 20%</span>
+            </div>
           </div>
         </div>
       </div>
@@ -699,7 +965,7 @@ function WakeelSeal() {
   return (
     <div aria-hidden className="mx-auto flex size-16 items-center justify-center rounded-full ring-1 ring-white/15">
       <div className="flex size-12 items-center justify-center rounded-full bg-primary/15 ring-1 ring-primary/40">
-        <svg viewBox="0 0 32 32" className="size-7 text-primary" fill="none">
+        <svg viewBox="0 0 32 32" className="size-7 text-primary" fill="none" aria-hidden="true">
           <path d="M8 9.5L12 22.5L16 13.5L20 22.5L24 9.5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </div>

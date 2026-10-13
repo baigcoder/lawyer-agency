@@ -21,7 +21,7 @@ const docStatus: Record<string, { key: TranslationKey; level: SignalLevel }> = {
 function Block({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
   return (
     <section className={cn('border-t border-border pt-3', className)}>
-      <h4 className="docket mb-2 text-muted-foreground">{label}</h4>
+      <h3 className="docket mb-2 text-muted-foreground">{label}</h3>
       {children}
     </section>
   );
@@ -52,7 +52,7 @@ export function HandoffBriefView({
     <div className="@container space-y-4 text-[13px] leading-relaxed">
       {situation ? (
         <section>
-          <h4 className="docket mb-1.5 text-muted-foreground">{t('briefSituation')}</h4>
+          <h3 className="docket mb-1.5 text-muted-foreground">{t('briefSituation')}</h3>
           <p className="text-sm leading-6 text-foreground">{situation}</p>
         </section>
       ) : null}
@@ -135,7 +135,7 @@ export function HandoffBriefView({
         <section className="flex gap-3 rounded-lg bg-primary/[0.06] p-3 ring-1 ring-primary/20">
           <ArrowRight className="mt-0.5 size-4 shrink-0 text-primary rtl:rotate-180" aria-hidden />
           <div>
-            <h4 className="docket text-primary">{t('briefNext')}</h4>
+            <h3 className="docket text-primary">{t('briefNext')}</h3>
             <p className="mt-1 font-medium">{brief.nextAction}</p>
           </div>
         </section>

@@ -24,11 +24,39 @@ const urduNastaliq = Noto_Nastaliq_Urdu({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.APP_PUBLIC_URL || 'http://localhost:3002'),
   title: { default: 'Wakeel — AI WhatsApp intake for law firms', template: '%s · Wakeel' },
   description:
     'Multi-tenant platform letting law firms run client intake, communication, and case coordination over WhatsApp — with AI that assists lawyers, never replaces them.',
   applicationName: 'Wakeel',
   manifest: '/manifest.webmanifest',
+  alternates: {
+    canonical: '/',
+  },
+  openGraph: {
+    title: 'Wakeel — AI WhatsApp intake for law firms',
+    description:
+      'Multi-tenant platform letting law firms run client intake, communication, and case coordination over WhatsApp — with AI that assists lawyers, never replaces them.',
+    url: '/',
+    siteName: 'Wakeel',
+    locale: 'en_PK',
+    type: 'website',
+    images: [
+      {
+        url: '/icon-512.png',
+        width: 512,
+        height: 512,
+        alt: 'Wakeel — Legal Operations Platform',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Wakeel — AI WhatsApp intake for law firms',
+    description:
+      'Multi-tenant platform letting law firms run client intake, communication, and case coordination over WhatsApp — with AI that assists lawyers, never replaces them.',
+    images: ['/icon-512.png'],
+  },
   icons: {
     icon: [
       // .ico first so legacy consumers that ignore `type` still resolve; modern

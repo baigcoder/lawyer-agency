@@ -277,7 +277,7 @@ export function MatterFrame({ className }: { className?: string }) {
             </div>
           </div>
 
-          <dl className={cn('divide-y divide-border rounded-lg ring-1 transition-colors duration-500', replied ? 'ring-border' : 'ring-transparent')}>
+          <div className={cn('divide-y divide-border rounded-lg ring-1 transition-colors duration-500', replied ? 'ring-border' : 'ring-transparent')}>
             {facts.map(([k, v], i) => (
               <Reveal key={k} on={replied} delay={on(3) ? 0 : 250 + i * 220} className="rounded-none">
                 <div
@@ -287,12 +287,12 @@ export function MatterFrame({ className }: { className?: string }) {
                   )}
                   style={fresh(2) ? { animationDelay: `${250 + i * 220}ms` } : undefined}
                 >
-                  <dt className={cn('text-muted-foreground', urdu)}>{k}</dt>
-                  <dd className={cn('font-medium', urdu)}>{v}</dd>
+                  <span className={cn('text-muted-foreground', urdu)}>{k}</span>
+                  <span className={cn('font-medium', urdu)}>{v}</span>
                 </div>
               </Reveal>
             ))}
-          </dl>
+          </div>
 
           <Reveal on={on(5)} fresh={fresh(5)}>
             <p className="docket mb-1.5 text-muted-foreground">{t('documents')}</p>

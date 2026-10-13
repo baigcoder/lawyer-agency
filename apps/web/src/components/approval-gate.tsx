@@ -50,9 +50,15 @@ export function ApprovalGate({
       )}
     >
       <header className="flex flex-wrap items-center justify-between gap-2">
-        <p className="docket text-attention">
-          {title ?? t('gateTitle')}
-        </p>
+        <div className="flex items-center gap-2">
+          <span className="relative flex h-2 w-2" aria-hidden="true">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-attention opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-attention" />
+          </span>
+          <p className="docket text-attention">
+            {title ?? t('gateTitle')}
+          </p>
+        </div>
         {meta ? <span className="docket text-muted-foreground">{meta}</span> : null}
       </header>
       <div className="mt-2 rounded-lg bg-card px-3 py-2.5 text-[13px] leading-relaxed ring-1 ring-border">

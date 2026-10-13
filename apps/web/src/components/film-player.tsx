@@ -51,7 +51,9 @@ export function FilmPlayer({ src, poster, className }: { src: string; poster: st
   };
 
   return (
-    <div className={cn('group relative overflow-hidden rounded-2xl bg-black shadow-[var(--shadow-frame)] ring-1 ring-white/10', className)}>
+    <div className="relative">
+      <div className="pointer-events-none absolute -inset-2 sm:-inset-4 rounded-3xl bg-primary/10 blur-2xl transition-opacity duration-700 opacity-60" aria-hidden="true" />
+      <div className={cn('group relative overflow-hidden rounded-2xl bg-black shadow-[var(--shadow-frame)] ring-1 ring-white/10', className)}>
       <video
         ref={ref}
         className="block aspect-video w-full"
@@ -96,6 +98,7 @@ export function FilmPlayer({ src, poster, className }: { src: string; poster: st
           {muted ? t('filmSoundOn') : t('filmSoundOff')}
         </button>
       </div>
+    </div>
     </div>
   );
 }
