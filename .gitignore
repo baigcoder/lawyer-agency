@@ -25,3 +25,7 @@ generated/
 .dbg/
 debug-*.md
 audit-results/
+
+# Vercel CLI link
+.vercel
+
