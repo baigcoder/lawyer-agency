@@ -9,7 +9,9 @@ import type { NextConfig } from 'next';
 const apiInternalUrl = process.env.API_INTERNAL_URL ?? 'http://localhost:3001';
 
 const nextConfig: NextConfig = {
-  output: 'standalone',
+  // Standalone output is for the Docker image (Phase 15); Vercel packages
+  // Next.js itself and fails when standalone tracing is enabled.
+  output: process.env.VERCEL ? undefined : 'standalone',
   async rewrites() {
     return [
       {
