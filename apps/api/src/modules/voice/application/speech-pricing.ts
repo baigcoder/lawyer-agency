@@ -17,6 +17,12 @@ const TTS_USD_PER_1K_CHARS: Record<string, number> = {
   eleven_multilingual_v2: 0.15,
   eleven_turbo_v2_5: 0.075,
   eleven_flash_v2_5: 0.075,
+  // Groq Orpheus (~$22 per 1M characters).
+  'groq/canopylabs/orpheus-v1-english': 0.022,
+  // Gemini TTS bills audio tokens; approximate per-character equivalents.
+  'gemini-3.1-flash-tts-preview': 0.02,
+  'gemini-2.5-flash-preview-tts': 0.02,
+  'gemini-2.5-pro-preview-tts': 0.04,
 };
 
 /** USD per minute of audio transcribed. */

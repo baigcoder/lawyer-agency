@@ -112,6 +112,22 @@ const envSchema = z
     ELEVENLABS_URDU_NOTE_MODEL: z
       .enum(['eleven_v3', 'eleven_turbo_v2_5'])
       .default('eleven_turbo_v2_5'),
+    // Text-to-speech engine order; an engine is skipped when unconfigured, when it
+    // cannot speak the reply's language, or when it fails / returns bad audio.
+    // Local espeak is always the last resort for voice notes.
+    TTS_PROVIDER_ORDER: z.string().min(1).default('groq,elevenlabs,gemini'),
+    // Groq TTS (Orpheus, English only) — uses GROQ_API_KEY. The Groq org admin
+    // must accept the model's terms once in the console before it will answer.
+    GROQ_TTS_MODEL: z.string().min(1).default('canopylabs/orpheus-v1-english'),
+    GROQ_TTS_VOICE_FEMALE: z.string().min(1).default('hannah'),
+    GROQ_TTS_VOICE_MALE: z.string().min(1).default('troy'),
+    GROQ_TTS_MAX_CHARS: z.coerce.number().int().min(50).max(4000).default(200),
+    // Gemini TTS (English + Urdu) — uses GOOGLE_GENERATIVE_AI_API_KEY. The free
+    // tier allows few requests per model per day, hence a fallback model.
+    GEMINI_TTS_MODEL: z.string().min(1).default('gemini-3.1-flash-tts-preview'),
+    GEMINI_TTS_FALLBACK_MODEL: z.string().min(1).default('gemini-2.5-flash-preview-tts'),
+    GEMINI_TTS_VOICE_FEMALE: z.string().min(1).default('Kore'),
+    GEMINI_TTS_VOICE_MALE: z.string().min(1).default('Charon'),
     // Whisper STT — optional overrides when chat uses Groq but STT should hit OpenAI (or vice versa)
     OPENAI_WHISPER_API_KEY: z.string().min(1).optional(),
     OPENAI_WHISPER_BASE_URL: z.url().optional(),
