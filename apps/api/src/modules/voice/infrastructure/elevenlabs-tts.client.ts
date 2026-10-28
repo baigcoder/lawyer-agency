@@ -132,6 +132,15 @@ export class ElevenLabsTtsClient implements TextToSpeechPort {
     return synthesizeWithEspeak(input);
   }
 
+  /**
+   * ElevenLabs only — throws instead of dropping to espeak, so the composite
+   * chain can try its next cloud engine before the local one.
+   */
+  async synthesizeRemote(input: SynthesizeInput): Promise<SynthesizeResult> {
+    if (!this.apiKey) throw new Error('ELEVENLABS_API_KEY is not configured');
+    return this.synthesizeElevenLabs(input, input.outputFormat === 'pcm_24000');
+  }
+
   private async synthesizeElevenLabs(input: SynthesizeInput, pcm: boolean): Promise<SynthesizeResult> {
     const language = resolveTtsLanguage(input.text, input.language);
     const voiceId = this.resolveVoiceId(input, language);

@@ -10,6 +10,9 @@ import { CompositeSttClient } from './infrastructure/composite-stt.client';
 import { ElevenLabsSttClient } from './infrastructure/elevenlabs-stt.client';
 import { OpenAiWhisperClient } from './infrastructure/openai-whisper.client';
 import { ElevenLabsTtsClient } from './infrastructure/elevenlabs-tts.client';
+import { CompositeTtsClient } from './infrastructure/composite-tts.client';
+import { GeminiTtsClient } from './infrastructure/gemini-tts.client';
+import { GroqTtsClient } from './infrastructure/groq-tts.client';
 import { WhatsappMediaProcessor } from './application/whatsapp-media.processor';
 import { VoiceReplyService } from './application/voice-reply.service';
 import { VoicePreviewService } from './application/voice-preview.service';
@@ -31,7 +34,10 @@ export class VoiceModule {
         OpenAiWhisperClient,
         ElevenLabsSttClient,
         { provide: SPEECH_TO_TEXT, useClass: CompositeSttClient },
-        { provide: TEXT_TO_SPEECH, useClass: ElevenLabsTtsClient },
+        ElevenLabsTtsClient,
+        GroqTtsClient,
+        GeminiTtsClient,
+        { provide: TEXT_TO_SPEECH, useClass: CompositeTtsClient },
         VoiceReplyService,
         ...(role === 'api' ? [VoicePreviewService] : []),
         ...(role === 'worker' ? [WhatsappMediaProcessor] : []),
