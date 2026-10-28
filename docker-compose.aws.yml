@@ -1,0 +1,257 @@
+# Single-host backend for AWS EC2 (free plan credits). The dashboard runs on
+# Vercel; this stack runs everything else on one instance behind Caddy (TLS).
+# Guide: docs/infrastructure/AWS_FREE_TIER.md
+#
+#   docker compose -f docker-compose.aws.yml up -d --build
+#   docker compose -f docker-compose.aws.yml --profile voice up -d   # + live calls
+#
+# Two env files, both created by infra/aws/setup.sh and never committed:
+#   .env      — infra secrets (DB owner password etc.), used for interpolation
+#               below and never handed to app containers
+#   .env.app  — app config/secrets for api/worker/voice
+# The app only ever sees the non-owner app_user URL, so a compromised app
+# process cannot bypass RLS with owner credentials (D-001, D-020).
+
+# Only `api` builds the image; worker/voice reuse it. Building it from three
+# services races on export ("image already exists").
+x-app: &app
+  image: wakeel-api:latest
+  pull_policy: never
+  restart: unless-stopped
+  env_file:
+    - .env.app
+  volumes:
+    - wakeel_media:/var/lib/wakeel/media
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    evolution-api:
+      condition: service_healthy
+
+x-app-env: &app-env
+  NODE_ENV: production
+  NODE_OPTIONS: --max-old-space-size=384
+  API_PORT: 3001
+  DATABASE_URL: postgresql://app_user:${APP_USER_PASSWORD:?run infra/aws/setup.sh}@postgres:5432/lawyer_agency
+  REDIS_URL: redis://redis:6379
+  EVOLUTION_API_BASE_URL: http://evolution-api:8080
+  EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:?run infra/aws/setup.sh}
+  # Evolution calls Wakeel back over the internal network, never the internet.
+  EVOLUTION_SERVER_URL: http://api:3001
+  OPENAI_EMBEDDING_BASE_URL: http://embeddings:80/v1
+  OPENAI_EMBEDDING_MODEL: intfloat/multilingual-e5-small
+  EMBEDDING_DIMENSIONS: 384
+  MEDIA_STORAGE_PATH: /var/lib/wakeel/media
+  APP_PUBLIC_URL: ${APP_PUBLIC_URL:?set APP_PUBLIC_URL in .env}
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
+    volumes:
+      - ./infra/aws/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+  postgres:
+    build:
+      context: ./infra/postgres
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # Sized for a 2 GB instance.
+    command: >
+      postgres
+      -c shared_buffers=128MB
+      -c effective_cache_size=384MB
+      -c work_mem=4MB
+      -c maintenance_work_mem=64MB
+      -c max_connections=60
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run infra/aws/setup.sh}
+      POSTGRES_DB: lawyer_agency
+      APP_USER_PASSWORD: ${APP_USER_PASSWORD:?run infra/aws/setup.sh}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Runs after init.sql on first boot: replaces app_user's dev password.
+      - ./infra/aws/postgres-app-user.sh:/docker-entrypoint-initdb.d/zz-app-user-password.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # BullMQ requires noeviction: an evicted job key is a lost job.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: migrator
+    image: wakeel-migrate:latest
+    environment:
+      MIGRATION_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/lawyer_agency
+      # Unused by `migrate deploy`, but prisma.config.ts resolves it.
+      SHADOW_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/lawyer_agency_shadow
+      DATABASE_URL: postgresql://app_user:${APP_USER_PASSWORD}@postgres:5432/lawyer_agency
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *app
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: runner
+    pull_policy: build
+    environment:
+      <<: *app-env
+      API_ROLE: api
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  worker:
+    <<: *app
+    environment:
+      <<: *app-env
+      API_ROLE: worker
+
+  # WhatsApp receptionist (live calls, D-124). Opt-in: needs UDP ports open
+  # in the security group and costs ~200 MB RAM.
+  voice:
+    <<: *app
+    profiles: ["voice"]
+    environment:
+      <<: *app-env
+      API_ROLE: voice
+      WEBRTC_ICE_PORT_MIN: 40000
+      WEBRTC_ICE_PORT_MAX: 40031
+    ports:
+      - "5060:5060/udp"
+      - "40000-40031:40000-40031/udp"
+
+  # Local embeddings: T3 documents never leave for a third party (D-005).
+  embeddings:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+    command: --model-id intfloat/multilingual-e5-small
+    restart: unless-stopped
+    volumes:
+      - embedding-models:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:80/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+
+  evolution-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    command: ["postgres", "-c", "shared_buffers=32MB", "-c", "max_connections=30"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${EVOLUTION_DB_PASSWORD:?run infra/aws/setup.sh}
+      POSTGRES_DB: evolution_api
+    volumes:
+      - evolution_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  evolution-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "64mb"]
+    volumes:
+      - evolution_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Not published to the host: only api/worker/voice reach it.
+  evolution-api:
+    build:
+      context: .
+      dockerfile: infra/evolution/Dockerfile
+    image: wakeel-evolution:latest
+    restart: unless-stopped
+    environment:
+      SERVER_URL: http://evolution-api:8080
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://postgres:${EVOLUTION_DB_PASSWORD}@evolution-postgres:5432/evolution_api?schema=public
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      # Same trade-offs as docker-compose.yml (Baileys pre-key 408s, Evolution #2437).
+      DATABASE_SAVE_DATA_CHATS: "false"
+      DATABASE_SAVE_DATA_CONTACTS: "false"
+      DATABASE_SAVE_DATA_HISTORIC: "false"
+      DATABASE_SAVE_DATA_LABELS: "false"
+      DATABASE_CONNECTION_CLIENT_NAME: evolution-api
+      CACHE_REDIS_ENABLED: "false"
+      CACHE_LOCAL_ENABLED: "true"
+      REDIS_ENABLED: "true"
+      REDIS_URI: redis://evolution-redis:6379
+      REDIS_PREFIX_KEY: evolution
+      WEBSOCKET_ENABLED: "false"
+      WEBHOOK_GLOBAL_ENABLED: "false"
+      LOG_LEVEL: info
+      TELEMETRY_ENABLED: "false"
+      NODE_OPTIONS: --dns-result-order=ipv4first --max-old-space-size=384
+      CONFIG_SESSION_PHONE_CLIENT: Windows
+      CONFIG_SESSION_PHONE_NAME: UWP
+    depends_on:
+      evolution-postgres:
+        condition: service_healthy
+      evolution-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+volumes:
+  caddy_data:
+  caddy_config:
+  pgdata:
+  redisdata:
+  wakeel_media:
+  embedding-models:
+  evolution_pgdata:
+  evolution_redisdata:

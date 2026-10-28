@@ -1,0 +1,15 @@
+# TLS edge for the AWS single-host stack. Caddy obtains and renews the
+# Let's Encrypt certificate for API_DOMAIN automatically (ports 80+443 open).
+# Vercel's /backend/* rewrite targets https://API_DOMAIN (API_INTERNAL_URL).
+
+{$API_DOMAIN} {
+	encode gzip
+
+	request_body {
+		max_size 50MB
+	}
+
+	reverse_proxy api:3001 {
+		header_up X-Real-IP {remote_host}
+	}
+}

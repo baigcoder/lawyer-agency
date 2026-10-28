@@ -26,7 +26,13 @@ COPY apps/web/package.json ./apps/web/
 RUN npm ci -w apps/api
 COPY infra/scripts/migrate.sh /app/infra/scripts/migrate.sh
 COPY apps/api ./apps/api
-RUN cd apps/api && npx prisma generate && npm run build
+# prisma.config.ts resolves these URLs even for `generate`, which never
+# connects. Placeholders keep the build hermetic; real URLs come at runtime.
+RUN cd apps/api \
+  && MIGRATION_DATABASE_URL=postgresql://build@localhost:5432/build \
+     SHADOW_DATABASE_URL=postgresql://build@localhost:5432/build_shadow \
+     npx prisma generate \
+  && npm run build
 
 # One-off migration runner — needs dev deps (Prisma CLI), unlike the slim runner.
 FROM builder AS migrator
