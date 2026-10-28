@@ -115,6 +115,11 @@ const envSchema = z
     // Burst batching: wait this long after a client's newest message before the
     // AI answers, and answer every unanswered message together. 0 disables.
     AI_BURST_SETTLE_MS: z.coerce.number().int().min(0).max(30_000).default(4_000),
+    // Read receipts, "typing…"/"recording…" and short multi-message replies.
+    AI_HUMAN_PACING: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((v) => v === 'true'),
     // Never hold a reply longer than this from the burst's first message.
     AI_BURST_MAX_WAIT_MS: z.coerce.number().int().min(1_000).max(120_000).default(45_000),
     // Text-to-speech engine order; an engine is skipped when unconfigured, when it

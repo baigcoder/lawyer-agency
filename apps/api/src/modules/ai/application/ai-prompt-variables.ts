@@ -48,6 +48,7 @@ export function buildFirmPromptVariables(ctx: AiRunContext): Record<string, stri
     dynamicReplyRules: buildDynamicReplyRules({
       isFirstClientTurn: ctx.isFirstClientTurn,
       aiGreetingHint: greetingHint,
+      replyWillBeSpoken: ctx.replyWillBeSpoken,
     }),
   };
 }

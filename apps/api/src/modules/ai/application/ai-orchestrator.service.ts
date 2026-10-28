@@ -109,7 +109,7 @@ interface InboundTurn {
   payload: unknown;
   extractedFields: Record<string, unknown>;
   /** Every inbound message this turn answers (the trigger plus any burst before it). */
-  answers: Array<{ id: string; createdAt: Date }>;
+  answers: Array<{ id: string; createdAt: Date; wamid: string | null }>;
 }
 
 const MEDIA_TYPES = new Set(['AUDIO', 'IMAGE', 'DOCUMENT', 'VIDEO']);
@@ -228,6 +228,8 @@ export class AiOrchestratorService {
     }
     inbound.clientText = burst.clientText;
     inbound.answers = burst.answers;
+    const turnStartedAt = Date.now();
+    const readWamids = inbound.answers.flatMap((a) => (a.wamid ? [a.wamid] : []));
 
     // Each intercept sends its own WhatsApp message and then returns true, so
     // completion is marked here — once, after the send, for every branch.
@@ -616,6 +618,8 @@ ${context.conversationHistory}`,
         responseText: outcome.responseText,
         language: outcome.language,
         inboundContentType: outcome.inboundContentType,
+        readWamids,
+        turnStartedAt,
       });
       await this.markTurnCompleted(params, inbound);
       return;
@@ -629,6 +633,8 @@ ${context.conversationHistory}`,
         responseText: outcome.handoffText,
         language: outcome.language,
         inboundContentType: outcome.inboundContentType,
+        readWamids,
+        turnStartedAt,
       });
       await this.markTurnCompleted(params, inbound);
       await this.enrichHandoffSituation(params.tenantId, params.correlationId, outcome);
@@ -918,7 +924,7 @@ ${context.conversationHistory}`,
         createdAt: message.createdAt,
         payload: message.payload,
         extractedFields: asFieldRecord(intake?.extractedFields),
-        answers: [{ id: message.id, createdAt: message.createdAt }],
+        answers: [{ id: message.id, createdAt: message.createdAt, wamid: message.wamid }],
       };
     });
   }
@@ -1006,7 +1012,7 @@ ${context.conversationHistory}`,
         },
         orderBy: { createdAt: 'desc' },
         take: this.burstOptions.maxMessages * 2,
-        select: { id: true, createdAt: true, body: true, contentType: true, payload: true },
+        select: { id: true, createdAt: true, body: true, contentType: true, payload: true, wamid: true },
       });
     });
     const pending = rows
@@ -1014,6 +1020,7 @@ ${context.conversationHistory}`,
       .map((row) => ({
         id: row.id,
         createdAt: row.createdAt,
+        wamid: row.wamid,
         body: row.id === inbound.messageId ? inbound.clientText : row.body,
         processing: isMediaStillProcessing(row),
       }));
@@ -1026,13 +1033,13 @@ ${context.conversationHistory}`,
     });
     if (plan.action !== 'answer') return plan;
     if (plan.messageIds.length <= 1) return alone;
-    const byId = new Map(pending.map((m) => [m.id, m.createdAt]));
+    const byId = new Map(pending.map((m) => [m.id, m]));
     return {
       action: 'answer',
       clientText: plan.clientText,
       answers: plan.messageIds.flatMap((id) => {
-        const createdAt = byId.get(id);
-        return createdAt ? [{ id, createdAt }] : [];
+        const row = byId.get(id);
+        return row ? [{ id, createdAt: row.createdAt, wamid: row.wamid }] : [];
       }),
     };
   }
