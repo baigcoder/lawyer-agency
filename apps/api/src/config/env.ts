@@ -112,10 +112,18 @@ const envSchema = z
     ELEVENLABS_URDU_NOTE_MODEL: z
       .enum(['eleven_v3', 'eleven_turbo_v2_5'])
       .default('eleven_turbo_v2_5'),
+    // Burst batching: wait this long after a client's newest message before the
+    // AI answers, and answer every unanswered message together. 0 disables.
+    AI_BURST_SETTLE_MS: z.coerce.number().int().min(0).max(30_000).default(4_000),
+    // Never hold a reply longer than this from the burst's first message.
+    AI_BURST_MAX_WAIT_MS: z.coerce.number().int().min(1_000).max(120_000).default(45_000),
     // Text-to-speech engine order; an engine is skipped when unconfigured, when it
     // cannot speak the reply's language, or when it fails / returns bad audio.
     // Local espeak is always the last resort for voice notes.
     TTS_PROVIDER_ORDER: z.string().min(1).default('groq,elevenlabs,gemini'),
+    // Urdu replies: Gemini first — ElevenLabs' free tier can't use its native Urdu
+    // voices over the API, and its English voices mispronounce Urdu.
+    TTS_PROVIDER_ORDER_UR: z.string().min(1).default('gemini,elevenlabs'),
     // Groq TTS (Orpheus, English only) — uses GROQ_API_KEY. The Groq org admin
     // must accept the model's terms once in the console before it will answer.
     GROQ_TTS_MODEL: z.string().min(1).default('canopylabs/orpheus-v1-english'),

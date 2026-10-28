@@ -22,7 +22,7 @@ function audio(outcome: Outcome, sampleRate = 24_000): PcmAudio {
   return { pcm: tone(outcome === 'too-long' ? 30 : 2, sampleRate), sampleRate, channels: 1 };
 }
 
-function build(opts: { groq?: Outcome; eleven?: Outcome; gemini?: Outcome; geminiRate?: number; order?: string }) {
+function build(opts: { groq?: Outcome; eleven?: Outcome; gemini?: Outcome; geminiRate?: number; order?: string; orderUr?: string }) {
   const calls: string[] = [];
   const groq = {
     isConfigured: () => opts.groq !== undefined,
@@ -55,7 +55,10 @@ function build(opts: { groq?: Outcome; eleven?: Outcome; gemini?: Outcome; gemin
       return { audio: audio(opts.gemini ?? 'fail', opts.geminiRate), model: 'gemini-3.1-flash-tts-preview' };
     },
   } as unknown as GeminiTtsClient;
-  const config = { get: () => opts.order ?? 'groq,elevenlabs,gemini' } as unknown as ConfigService<never, true>;
+  const config = {
+    get: (key: string) =>
+      key === 'TTS_PROVIDER_ORDER_UR' ? (opts.orderUr ?? 'gemini,elevenlabs') : (opts.order ?? 'groq,elevenlabs,gemini'),
+  } as unknown as ConfigService<never, true>;
   return { client: new CompositeTtsClient(config, elevenLabs, groq, gemini), calls };
 }
 
@@ -78,11 +81,24 @@ describe('CompositeTtsClient', () => {
     expect(calls).toEqual(['groq', 'elevenlabs']);
   });
 
-  it('skips Groq for Urdu and reaches Gemini when ElevenLabs is out of quota', async () => {
-    const { client, calls } = build({ groq: 'ok', eleven: 'fail', gemini: 'ok' });
+  it('speaks Urdu with Gemini first by default', async () => {
+    const { client, calls } = build({ groq: 'ok', eleven: 'ok', gemini: 'ok' });
     const result = await client.synthesize(urdu);
-    expect(calls).toEqual(['elevenlabs', 'gemini']);
+    expect(calls).toEqual(['gemini']);
     expect(result.model).toBe('gemini-3.1-flash-tts-preview');
+  });
+
+  it('falls back to ElevenLabs for Urdu when Gemini is out of quota', async () => {
+    const { client, calls } = build({ groq: 'ok', eleven: 'ok', gemini: 'fail' });
+    const result = await client.synthesize(urdu);
+    expect(calls).toEqual(['gemini', 'elevenlabs']);
+    expect(result.model).toBe('eleven_turbo_v2_5');
+  });
+
+  it('never sends Urdu to Groq, even if an Urdu order lists it first', async () => {
+    const { client, calls } = build({ groq: 'ok', eleven: 'fail', gemini: 'ok', orderUr: 'groq,elevenlabs,gemini' });
+    await client.synthesize(urdu);
+    expect(calls).toEqual(['elevenlabs', 'gemini']);
   });
 
   it('treats bad audio as a failure and moves on', async () => {
