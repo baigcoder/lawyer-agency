@@ -1,6 +1,8 @@
 'use client';
 
 import { createContext, useContext, type ReactNode } from 'react';
+import { toast } from 'sonner';
+import { useLanguage } from '@/lib/language';
 import type { DashboardView } from '@/lib/dashboard-nav';
 import type { DemoActivity, DemoConversation, DemoEscalation, DemoPayment } from '@/lib/demo-workspace';
 import type { UiSound } from '@/lib/ui-sound';
@@ -42,4 +44,13 @@ export function useDemo(): DemoContextValue {
 /** Page padding shared by every demo view (matches the dashboard main area). */
 export function DemoPage({ children }: { children: ReactNode }) {
   return <div className="app-enter mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</div>;
+}
+
+/**
+ * For controls that create or change real data (invite, upload, new entry…):
+ * say plainly that the demo saves nothing instead of leaving a dead button.
+ */
+export function useDemoOnly(): () => void {
+  const { t } = useLanguage();
+  return () => toast(t('demoOnlyTitle'), { description: t('demoOnlyDesc') });
 }

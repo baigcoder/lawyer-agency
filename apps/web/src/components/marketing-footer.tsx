@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { WakeelMonogram } from '@/components/wakeel-monogram';
+import { useLandingCopy } from '@/lib/landing-copy';
 import { useLanguage } from '@/lib/language';
 import { cn } from '@/lib/utils';
 
@@ -11,13 +12,16 @@ import { cn } from '@/lib/utils';
  */
 export function MarketingFooter() {
   const { t, dir } = useLanguage();
+  const copy = useLandingCopy();
   const urdu = dir === 'rtl' ? 'font-urdu' : undefined;
 
   const product = [
-    { href: '/#formation', label: t('navFormation') },
-    { href: '/#handoff', label: t('navHandoff') },
-    { href: '/#control', label: t('navControl') },
+    { href: '/#tour', label: copy.nav.tour },
+    { href: '/#how', label: copy.nav.how },
+    { href: '/#safeguards', label: copy.nav.safeguards },
+    { href: '/#pricing', label: copy.nav.pricing },
     { href: '/demo', label: t('demo') },
+    { href: '/sign-in', label: copy.footer.signIn },
   ];
   const legal = [
     { href: '/privacy', label: t('footerPrivacy') },
@@ -33,15 +37,15 @@ export function MarketingFooter() {
             <WakeelMonogram className="h-7 w-7" />
             <span className="font-semibold tracking-[-0.02em]">Wakeel</span>
           </div>
-          <p className={cn('mt-4 max-w-sm text-sm leading-6 text-muted-foreground', urdu)}>{t('footerTagline')}</p>
-          <p className="docket mt-6 text-muted-foreground">{t('trustedNoAdvice')}</p>
+          <p className={cn('mt-4 max-w-sm text-sm leading-6 text-muted-foreground', urdu)}>{copy.footer.tagline}</p>
+          <p className="mt-6 text-xs text-muted-foreground">© Wakeel</p>
         </div>
         {[
-          { title: t('footerProduct'), links: product },
-          { title: t('footerLegal'), links: legal },
+          { title: copy.footer.product, links: product },
+          { title: copy.footer.legal, links: legal },
         ].map((col) => (
           <nav key={col.title} aria-label={col.title}>
-            <p className="docket text-muted-foreground">{col.title}</p>
+            <p className={cn('text-sm font-semibold', urdu)}>{col.title}</p>
             <ul className="mt-4 space-y-2.5">
               {col.links.map((link) => (
                 <li key={link.href}>

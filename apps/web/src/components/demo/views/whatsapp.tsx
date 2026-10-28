@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { RefreshCw, ShieldCheck } from 'lucide-react';
-import { DemoPage } from '@/components/demo/demo-context';
+import { DemoPage, useDemoOnly } from '@/components/demo/demo-context';
 import { WhatsappGlyph } from '@/components/matter-frame';
 import { PageHeader } from '@/components/page-header';
 import { Docket, Signal } from '@/components/signal';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { Panel } from '@/components/workspace/panel';
 import { FIRM, WHATSAPP } from '@/lib/demo-workspace';
 import { useLanguage } from '@/lib/language';
@@ -14,7 +15,9 @@ import { cn } from '@/lib/utils';
 
 export function WhatsappView() {
   const { t } = useLanguage();
+  const demoOnly = useDemoOnly();
   const [lastHook, setLastHook] = useState(2);
+  const [autoReply, setAutoReply] = useState(true);
 
   // Webhook heartbeat: the console should feel connected, because it is.
   useEffect(() => {
@@ -39,7 +42,7 @@ export function WhatsappView() {
               <p className="mt-1 font-mono text-xl font-medium tabular-nums">{FIRM.whatsapp}</p>
               <Docket items={[FIRM.name, t('demoWaBusiness')]} />
             </div>
-            <Button variant="outline" size="sm" className="h-8">
+            <Button variant="outline" size="sm" className="h-8" onClick={demoOnly}>
               <RefreshCw aria-hidden />
               {t('demoWaReconnect')}
             </Button>
@@ -97,6 +100,26 @@ export function WhatsappView() {
             ))}
           </Panel>
         </div>
+      </div>
+
+      {/* Same controls as the live WhatsApp page: the auto-reply switch and how a message flows. */}
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+        <Panel title={t('howWhatsappWorks')} meta={t('howWhatsappWorksDesc')} bodyClassName="p-5">
+          <ol className="space-y-3">
+            {[t('whatsappHowStep1'), t('whatsappHowStep2'), t('whatsappHowStep3')].map((step, i) => (
+              <li key={step} className="flex gap-3 text-[13.5px] leading-6">
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold tabular-nums text-primary">
+                  {i + 1}
+                </span>
+                {step}
+              </li>
+            ))}
+          </ol>
+        </Panel>
+        <Panel title={t('aiAutoReply')} bodyClassName="flex items-start justify-between gap-4 p-5">
+          <p className="text-[13.5px] leading-6 text-muted-foreground">{autoReply ? t('aiAutoReplyOn') : t('aiAutoReplyOff')}</p>
+          <Switch checked={autoReply} onCheckedChange={setAutoReply} aria-label={t('aiAutoReply')} />
+        </Panel>
       </div>
     </DemoPage>
   );

@@ -1,7 +1,7 @@
 'use client';
 
 import { Check, Minus, UserPlus } from 'lucide-react';
-import { DemoPage } from '@/components/demo/demo-context';
+import { DemoPage, useDemoOnly } from '@/components/demo/demo-context';
 import { PageHeader } from '@/components/page-header';
 import { Signal } from '@/components/signal';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,7 @@ const PERMISSIONS: Array<{ key: TranslationKey; owner: boolean; lawyer: boolean;
 
 export function TeamView() {
   const { t } = useLanguage();
+  const demoOnly = useDemoOnly();
   const roleKey = { Owner: 'roleOwner', Lawyer: 'roleLawyer', Staff: 'roleStaff' } as const;
 
   return (
@@ -30,7 +31,7 @@ export function TeamView() {
         title={t('demoRosterTitle')}
         description={t('demoRosterLede')}
         action={
-          <Button size="sm" className="h-8">
+          <Button size="sm" className="h-8" onClick={demoOnly}>
             <UserPlus aria-hidden />
             {t('teamInvite')}
           </Button>

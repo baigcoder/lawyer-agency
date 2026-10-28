@@ -7,6 +7,7 @@ import { WakeelMonogram } from '@/components/wakeel-monogram';
 import { LanguageToggle } from '@/components/language-toggle';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
+import { useLandingCopy } from '@/lib/landing-copy';
 import { useLanguage } from '@/lib/language';
 import { cn } from '@/lib/utils';
 
@@ -24,16 +25,17 @@ const TRIGGER_ID = 'marketing-mobile-nav-trigger';
  */
 export function MarketingHeader() {
   const { t, dir } = useLanguage();
+  const copy = useLandingCopy();
   const [open, setOpen] = useState(false);
   const urdu = dir === 'rtl';
 
   // Anchors are absolute (`/#…`) so they also work from /demo and the policy pages.
   const links = [
-    { href: '/#formation', label: t('navFormation') },
-    { href: '/#handoff', label: t('navHandoff') },
-    { href: '/#control', label: t('navControl') },
-    { href: '/#security', label: t('security') },
-    { href: '/demo', label: t('demo') },
+    { href: '/#tour', label: copy.nav.tour },
+    { href: '/#how', label: copy.nav.how },
+    { href: '/#safeguards', label: copy.nav.safeguards },
+    { href: '/#pricing', label: copy.nav.pricing },
+    { href: '/#faq', label: copy.nav.faq },
   ];
 
   // Escape closes and returns focus to the trigger.
