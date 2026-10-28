@@ -1,5 +1,6 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Inject, Logger } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { DelayedError, type Job } from 'bullmq';
 import { QUEUES } from './queue.constants';
 import { isRetryLater } from '../errors/retry-later.error';
@@ -66,10 +67,23 @@ export class DomainEventsDispatcher extends WorkerHost {
         // configured max makes the final failure terminal with the real
         // reason in the failed set.
         job.attemptsMade = job.opts.attempts ?? 1;
+        this.report(job, error);
         throw error;
       }
+      // Last attempt: the job lands in the failed set and nobody retries it.
+      if (job.attemptsMade + 1 >= (job.opts.attempts ?? 1)) this.report(job, error);
       throw error;
     }
+  }
+
+  /** Final failures only; tags are identifiers (D-005), never the payload. */
+  private report(job: Job<DomainEventJob>, error: unknown): void {
+    Sentry.withScope((scope) => {
+      scope.setTag('event_type', job.name);
+      scope.setTag('job_id', job.id ?? 'unknown');
+      if (job.data.tenantId) scope.setTag('tenant_id', job.data.tenantId);
+      Sentry.captureException(error);
+    });
   }
 }
 

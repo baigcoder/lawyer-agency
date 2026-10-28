@@ -134,6 +134,9 @@ an API is reachable. Then **redeploy** — `API_INTERNAL_URL` is baked into the
 
 ## Operating
 
+Routine deploys, verification, rollback and restore tests:
+[DEPLOY_RUNBOOK.md](DEPLOY_RUNBOOK.md).
+
 ```bash
 # Update to latest dev
 git pull && docker compose -f docker-compose.aws.yml up -d --build

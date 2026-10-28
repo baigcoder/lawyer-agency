@@ -1,9 +1,10 @@
 import { Module, type NestModule, type MiddlewareConsumer } from '@nestjs/common';
-import { APP_FILTER } from '@nestjs/core';
-import { ConfigModule } from '@nestjs/config';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import { randomUUID } from 'node:crypto';
-import { validateEnv } from './config/env';
+import { validateEnv, type Env } from './config/env';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { UnitOfWork } from './common/prisma/unit-of-work';
 import { HealthModule } from './common/health/health.module';
@@ -15,6 +16,7 @@ import { DomainEventsDispatcher } from './common/queue/domain-events-dispatcher.
 import { CryptoModule } from './common/crypto/crypto.module';
 import { CorrelationMiddleware } from './common/correlation/correlation.middleware';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { HttpThrottlerGuard } from './common/throttle/http-throttler.guard';
 import { CasesModule } from './modules/cases/cases.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -77,6 +79,15 @@ const siblingRole = isWorker ? 'worker' : 'api';
         },
       },
     }),
+    // Per-user HTTP rate limit (OWASP API4). Process-local storage is enough
+    // for the single api instance; 0 turns it off.
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<Env, true>) => {
+        const limit = config.get('RATE_LIMIT_PER_MINUTE', { infer: true });
+        return { throttlers: [{ ttl: 60_000, limit }], skipIf: () => limit === 0 };
+      },
+    }),
     PrismaModule,
     EventsModule,
     CryptoModule,
@@ -112,6 +123,7 @@ const siblingRole = isWorker ? 'worker' : 'api';
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
+    { provide: APP_GUARD, useClass: HttpThrottlerGuard },
     {
       provide: DOMAIN_EVENT_HANDLERS,
       useFactory: (

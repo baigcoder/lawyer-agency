@@ -2,12 +2,14 @@ import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../../config/env';
 import { PrismaService } from '../prisma/prisma.service';
+import { SkipThrottle } from '@nestjs/throttler';
 
 /**
  * Liveness is dependency-free (load balancers poll it); readiness checks the
  * database because an API without its RLS-enforcing datastore must not serve.
  * Excluded from the /v1 global prefix and from request auto-logging.
  */
+@SkipThrottle()
 @Controller('health')
 export class HealthController {
   constructor(

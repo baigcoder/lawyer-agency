@@ -170,6 +170,8 @@ const envSchema = z
     // Observability (D-016)
     OTEL_EXPORTER_OTLP_ENDPOINT: z.url().optional(),
     SENTRY_DSN: z.string().optional(),
+    // HTTP requests per user (or per IP when signed out) per minute. 0 disables.
+    RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(0).max(100_000).default(300),
 
     // Notification channels (Phase 12) — optional in dev, required for production push/email
     VAPID_PUBLIC_KEY: z.string().min(1).optional(),

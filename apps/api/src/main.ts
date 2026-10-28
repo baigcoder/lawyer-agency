@@ -1,3 +1,5 @@
+// Must load before anything else so Sentry can instrument Node (D-016).
+import './instrument';
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
