@@ -146,7 +146,22 @@ docker compose -f docker-compose.aws.yml exec -T postgres \
   pg_dump -U postgres -Fc lawyer_agency > wakeel-$(date +%F).dump
 ```
 
-This single host is a pilot setup: one disk, no automated backups, no
-failover. Before real client data, add the backups from
-[BACKUP_STRATEGY.md](BACKUP_STRATEGY.md) (at minimum a daily `pg_dump` to S3)
-and EBS snapshots.
+## Backups and cost alerts
+
+- **Nightly backups:** [`infra/aws/backup.sh`](../../infra/aws/backup.sh)
+  (installed as `/usr/local/bin/wakeel-backup`, cron 02:00 PKT) streams
+  `pg_dump` of both databases to the private, encrypted bucket
+  `wakeel-backups-<account>-ap-south-1` under `postgres/<timestamp>/`.
+  Objects expire after 14 days. The instance role `wakeel-backend-ec2` may
+  only `PutObject` there — it cannot read or delete backups. Log:
+  `/var/log/wakeel-backup.log`.
+- **Restore:** download a dump with your own AWS credentials, then
+  `pg_restore -U postgres -d lawyer_agency --clean <file>` inside the
+  postgres container (stop api/worker first).
+- **Budgets:** "Wakeel zero-spend guard" emails on any spend after credits;
+  "Wakeel credit burn" emails at 80% of $25/month gross (before credits)
+  or when the forecast exceeds it.
+
+Still a pilot setup: one disk, daily (not continuous) backups, no failover.
+See [BACKUP_STRATEGY.md](BACKUP_STRATEGY.md) for the production target
+(WAL archiving, off-site copy) and add EBS snapshots.
