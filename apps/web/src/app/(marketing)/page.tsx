@@ -111,7 +111,7 @@ export default function Home() {
                   <p className={cn('text-sm font-medium text-primary', urdu)}>
                     <span className="tabular-nums">{i + 1}.</span> {step.label}
                   </p>
-                  <h3 className={cn('mt-3 text-2xl font-semibold tracking-[-0.02em] sm:text-[1.75rem]', urdu && 'font-urdu leading-[1.8] tracking-normal')}>
+                  <h3 className={cn('mt-3 text-2xl font-semibold tracking-[-0.02em] sm:text-[1.75rem]', urdu && 'font-urdu text-xl !leading-[1.75] tracking-normal sm:text-[1.4rem]')}>
                     {step.title}
                   </h3>
                   <p className={cn('mt-4 max-w-lg text-[1.0625rem] leading-8 text-muted-foreground', urdu)}>{step.body}</p>
@@ -146,7 +146,7 @@ export default function Home() {
               <article key={group.title} aria-labelledby={`area-${g}`} className="grid grid-cols-1 items-start gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:gap-14">
                 <div className={cn(g % 2 === 1 && 'lg:order-2')}>
                   <p className="text-sm font-medium tabular-nums text-muted-foreground">0{g + 1}</p>
-                  <h3 id={`area-${g}`} className={cn('mt-2 text-2xl font-semibold tracking-[-0.02em]', urdu && 'font-urdu leading-[1.8] tracking-normal')}>
+                  <h3 id={`area-${g}`} className={cn('mt-2 text-2xl font-semibold tracking-[-0.02em]', urdu && 'font-urdu text-xl !leading-[1.75] tracking-normal sm:text-[1.4rem]')}>
                     {group.title}
                   </h3>
                   <p className={cn('mt-2 max-w-lg text-[1.0625rem] leading-7 text-muted-foreground', urdu)}>{group.body}</p>
@@ -238,7 +238,7 @@ export default function Home() {
         <Section labelledBy="final-title" size="sm">
           <div className="flex flex-col items-start gap-6 rounded-2xl bg-primary px-6 py-10 text-primary-foreground sm:px-10 lg:flex-row lg:items-center lg:justify-between">
             <div className="max-w-xl">
-              <h2 id="final-title" className={cn('text-2xl font-semibold tracking-[-0.02em] sm:text-3xl', urdu && 'font-urdu leading-[1.8] tracking-normal')}>
+              <h2 id="final-title" className={cn('text-2xl font-semibold tracking-[-0.02em] sm:text-3xl', urdu && 'font-urdu text-xl !leading-[1.75] tracking-normal sm:text-[1.4rem]')}>
                 {copy.final.title}
               </h2>
               <p className={cn('mt-2 text-[1.0625rem] leading-7 opacity-85', urdu)}>{copy.final.lede}</p>
@@ -284,7 +284,7 @@ function Heading({ id, eyebrow, title, lede }: { id: string; eyebrow: string; ti
         id={id}
         className={cn(
           'mt-3 text-balance font-semibold',
-          urdu ? 'font-urdu text-3xl leading-[1.75] sm:text-[2.25rem]' : 'text-3xl leading-[1.15] tracking-[-0.03em] sm:text-[2.5rem]',
+          urdu ? 'font-urdu text-[1.6rem] !leading-[1.75] sm:text-[1.95rem]' : 'text-3xl leading-[1.15] tracking-[-0.03em] sm:text-[2.5rem]',
         )}
       >
         {title}
@@ -310,7 +310,7 @@ function Hero() {
             className={cn(
               'mt-4 text-balance font-semibold',
               isRtl
-                ? 'font-urdu text-[2.25rem] leading-[1.75] sm:text-5xl sm:leading-[1.75]'
+                ? 'font-urdu text-[1.9rem] !leading-[1.7] sm:text-[2.5rem]'
                 : 'text-[2.5rem] leading-[1.05] tracking-[-0.04em] sm:text-5xl xl:text-[3.25rem]',
             )}
           >

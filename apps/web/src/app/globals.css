@@ -205,10 +205,13 @@
   text-transform: none;
 }
 
-/* Urdu (Nastaliq): generous leading; display sizes set their own. */
+/* Urdu (Nastaliq): generous leading for body copy. This rule is unlayered, so
+   it beats Tailwind `leading-*` utilities; headings that need tighter leading
+   use the important form (`!leading-[1.7]`). Nastaliq reads ~20% larger than
+   Latin at the same px, so Urdu display sizes are set a step smaller. */
 .font-urdu {
   font-family: var(--font-urdu-nastaliq), "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", serif;
-  line-height: 2.2;
+  line-height: 2;
 }
 
 .tabular-nums {
@@ -444,6 +447,18 @@ dialog.sheet[open]::backdrop {
   .tour-beat, .tour-pop, .tour-highlight, .tour-press, .tour-swap-in, .tour-bar, .tour-rise { animation: none; }
   .tour-typing { display: none; }
   .tour-swap-out { animation: none; opacity: 0; }
+}
+
+/* Film button: rings pulse outward from the play icon to invite a click. */
+.film-pulse {
+  animation: wk-film-pulse 2.2s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+}
+@keyframes wk-film-pulse {
+  0% { transform: scale(1); opacity: 0.9; }
+  80%, 100% { transform: scale(1.85); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .film-pulse { animation: none; opacity: 0; }
 }
 
 /* Film lightbox: darker backdrop than the default dialog scrim. */
