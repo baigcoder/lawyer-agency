@@ -115,6 +115,8 @@ const envSchema = z
     // Burst batching: wait this long after a client's newest message before the
     // AI answers, and answer every unanswered message together. 0 disables.
     AI_BURST_SETTLE_MS: z.coerce.number().int().min(0).max(30_000).default(4_000),
+    // AI replies allowed per conversation per hour before staff take over. 0 disables.
+    AI_MAX_REPLIES_PER_HOUR: z.coerce.number().int().min(0).max(500).default(30),
     // Read receipts, "typing…"/"recording…" and short multi-message replies.
     AI_HUMAN_PACING: z
       .enum(['true', 'false'])

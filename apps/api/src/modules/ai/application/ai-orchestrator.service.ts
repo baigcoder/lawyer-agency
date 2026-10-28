@@ -193,7 +193,10 @@ export class AiOrchestratorService {
       settleMs: config.get('AI_BURST_SETTLE_MS', { infer: true }),
       maxWaitMs: config.get('AI_BURST_MAX_WAIT_MS', { infer: true }),
     };
+    this.maxRepliesPerHour = config.get('AI_MAX_REPLIES_PER_HOUR', { infer: true });
   }
+
+  private readonly maxRepliesPerHour: number;
 
   private readonly burstOptions: BurstOptions;
 
@@ -269,9 +272,30 @@ export class AiOrchestratorService {
         tx,
         retrievedChunks: [],
       });
-      return { conversation, message, allowlist: tenant?.aiProviderAllowlist ?? [], context };
+      // Per-conversation ceiling: a spammer or a reply loop must not drain the
+      // firm's AI budget. Past it the AI stays quiet and staff take over.
+      const recentAiReplies =
+        this.maxRepliesPerHour > 0
+          ? await tx.message.count({
+              where: {
+                conversationId: params.conversationId,
+                direction: 'OUTBOUND',
+                senderType: 'AI',
+                createdAt: { gte: new Date(Date.now() - 60 * 60 * 1000) },
+              },
+            })
+          : 0;
+      return { conversation, message, allowlist: tenant?.aiProviderAllowlist ?? [], context, recentAiReplies };
     });
     if (!loaded) {
+      await this.markTurnCompleted(params, inbound);
+      return;
+    }
+    if (this.maxRepliesPerHour > 0 && loaded.recentAiReplies >= this.maxRepliesPerHour) {
+      this.logger.warn(
+        { conversationId: params.conversationId, recentAiReplies: loaded.recentAiReplies },
+        'AI reply limit reached for this conversation — leaving it to staff',
+      );
       await this.markTurnCompleted(params, inbound);
       return;
     }
@@ -421,8 +445,10 @@ export class AiOrchestratorService {
       language,
       guardReply(rewriteMissingAnswerReply(agentResult.responseText, language), {
         clientText,
+        // The firm's own fee is a known figure too, or the money check would drop it.
         sources: `${context.retrievedContext}
-${context.conversationHistory}`,
+${context.conversationHistory}
+${context.firm.consultationFeePkr ? `Consultation fee PKR ${context.firm.consultationFeePkr}` : ''}`,
         differentiators: context.firm.differentiators ?? [],
         voiceGender: context.aiSettings.aiVoiceGender,
       }),

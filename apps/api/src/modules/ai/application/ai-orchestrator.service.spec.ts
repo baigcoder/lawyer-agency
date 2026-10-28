@@ -17,6 +17,8 @@ import { defaultAiSettings } from '../../firm-profile/application/ai-settings.dt
 
 function makeService(overrides: {
   burstSettleMs?: number;
+  maxRepliesPerHour?: number;
+  recentAiReplies?: number;
   pendingMessages?: Array<{ id: string; createdAt: Date; body: string | null; contentType: string; payload: unknown }>;
   escalation?: ReturnType<EscalationDetectorService['detect']> | null;
   intent?: 'INTAKE' | 'FAQ' | 'CASE_UPDATE' | 'HUMAN_HANDOFF' | 'GREETING' | 'OFF_TOPIC';
@@ -66,6 +68,7 @@ function makeService(overrides: {
     message: {
       findFirst: vi.fn(async () => message),
       findMany: vi.fn(async () => overrides.pendingMessages ?? []),
+      count: vi.fn(async () => overrides.recentAiReplies ?? 0),
       update: vi.fn(async () => message),
       create: vi.fn(async (args: { data: Record<string, unknown> }) => ({ id: 'draft-1', ...args.data })),
     },
@@ -219,7 +222,14 @@ function makeService(overrides: {
       documentRequests as never,
       cases as never,
       { summarize: vi.fn(async () => null) } as never,
-      { get: (key: string) => (key === 'AI_BURST_SETTLE_MS' ? (overrides.burstSettleMs ?? 0) : 45_000) } as never,
+      {
+        get: (key: string) =>
+          key === 'AI_BURST_SETTLE_MS'
+            ? (overrides.burstSettleMs ?? 0)
+            : key === 'AI_MAX_REPLIES_PER_HOUR'
+              ? (overrides.maxRepliesPerHour ?? 30)
+              : 45_000,
+      } as never,
     ),
     send,
     voiceReply,
@@ -286,6 +296,21 @@ describe('AiOrchestratorService burst batching', () => {
     expect(marked.map((call) => JSON.stringify(call))).toEqual(
       expect.arrayContaining([expect.stringContaining('msg-0'), expect.stringContaining('msg-1')]),
     );
+  });
+});
+
+describe('AiOrchestratorService reply limit', () => {
+  it('stays quiet once a conversation hits the hourly AI reply limit', async () => {
+    const { service, voiceReply, intake } = makeService({ recentAiReplies: 30, maxRepliesPerHour: 30 });
+    await service.process({ tenantId: 't1', conversationId: 'conv-1', messageId: 'msg-1' });
+    expect(intake.run).not.toHaveBeenCalled();
+    expect(voiceReply.sendAiReply).not.toHaveBeenCalled();
+  });
+
+  it('answers normally under the limit', async () => {
+    const { service, voiceReply } = makeService({ recentAiReplies: 29, maxRepliesPerHour: 30 });
+    await service.process({ tenantId: 't1', conversationId: 'conv-1', messageId: 'msg-1' });
+    expect(voiceReply.sendAiReply).toHaveBeenCalledTimes(1);
   });
 });
 
