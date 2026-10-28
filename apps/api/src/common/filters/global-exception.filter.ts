@@ -6,6 +6,7 @@ import {
   type ArgumentsHost,
   type ExceptionFilter,
 } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import type { Response } from 'express';
 import { RequestContextStore } from '../context/request-context';
 import { DomainError } from '../errors/domain-error';
@@ -38,6 +39,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         { err: exception, correlationId },
         'unhandled exception',
       );
+      // Only 5xx are bugs worth paging on; 4xx are the client's mistake.
+      // Tags are identifiers only (D-005) — never request bodies.
+      Sentry.withScope((scope) => {
+        if (correlationId) scope.setTag('correlation_id', correlationId);
+        const tenantId = RequestContextStore.tenantId();
+        if (tenantId) scope.setTag('tenant_id', tenantId);
+        Sentry.captureException(exception);
+      });
     }
 
     // Preserve structured 4xx bodies (e.g. zod issue lists) — clients need

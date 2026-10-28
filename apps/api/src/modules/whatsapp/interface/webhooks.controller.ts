@@ -10,12 +10,14 @@ import {
 } from '@nestjs/common';
 import type { RawBodyRequest, Request } from '@nestjs/common';
 import { WebhookIngestService } from '../application/webhook-ingest.service';
+import { SkipThrottle } from '@nestjs/throttler';
 
 /**
  * Meta webhook endpoint. Signature is the authentication here — no
  * TenantGuard (tenant is resolved from the payload AFTER HMAC verification).
  * Mounted under the /v1 prefix; NGINX exposes it via /backend/* (D-038).
  */
+@SkipThrottle()
 @Controller('webhooks/whatsapp')
 export class WhatsappWebhookController {
   constructor(private readonly ingest: WebhookIngestService) {}

@@ -1,10 +1,12 @@
 import { Body, Controller, Headers, HttpCode, Post } from '@nestjs/common';
 import { EvolutionWebhookIngestService, type EvolutionWebhookPayload } from '../application/evolution-webhook-ingest.service';
+import { SkipThrottle } from '@nestjs/throttler';
 
 /**
  * Evolution API webhook endpoint. No TenantGuard: the instance name in the
  * payload resolves to the tenant. Mounted under /v1; NGINX exposes via /backend/*.
  */
+@SkipThrottle()
 @Controller('webhooks/evolution')
 export class EvolutionWebhookController {
   constructor(private readonly ingest: EvolutionWebhookIngestService) {}
