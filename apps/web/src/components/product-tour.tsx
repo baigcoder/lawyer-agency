@@ -119,7 +119,7 @@ export function ProductTour() {
             <p className="text-sm font-medium tabular-nums text-primary">
               <span className={urdu}>{copy.tour.scene}</span> {index + 1} <span className={urdu}>{copy.tour.of}</span> {scenes.length}
             </p>
-            <h3 className={cn('mt-3 text-2xl font-semibold tracking-[-0.02em] sm:text-[1.75rem]', urdu && 'font-urdu leading-[1.8] tracking-normal')}>
+            <h3 className={cn('mt-3 text-2xl font-semibold tracking-[-0.02em] sm:text-[1.75rem]', urdu && 'font-urdu text-xl !leading-[1.75] tracking-normal sm:text-[1.4rem]')}>
               {scene?.title}
             </h3>
             <p className={cn('mt-3 text-[0.975rem] leading-7 text-muted-foreground', urdu)}>{scene?.body}</p>

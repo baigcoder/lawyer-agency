@@ -21,6 +21,7 @@ const en = {
   },
   film: {
     watch: 'Watch the film',
+    hint: 'See every feature in 2 minutes',
     title: 'Wakeel in two minutes',
     description: 'A narrated walkthrough of every part of the product, with captions.',
     captions: 'English captions',
@@ -304,6 +305,7 @@ const ur: LandingCopy = {
   },
   film: {
     watch: 'فلم دیکھیں',
+    hint: 'دو منٹ میں ہر فیچر دیکھیں',
     title: 'وکیل، دو منٹ میں',
     description: 'پروڈکٹ کے ہر حصے کا اردو بیانیہ کے ساتھ تعارف، کیپشنز کے ساتھ۔',
     captions: 'اردو کیپشنز',
