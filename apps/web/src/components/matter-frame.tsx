@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { CheckCheck, FileText, Pause, Play } from 'lucide-react';
 import { ApprovalGate } from '@/components/approval-gate';
 import { Docket, Signal } from '@/components/signal';
 import { useLanguage } from '@/lib/language';
+import { useReducedMotion } from '@/lib/use-reduced-motion';
 import type { TranslationKey } from '@/lib/translations';
 import { cn } from '@/lib/utils';
 
@@ -107,20 +108,6 @@ function TypingDots({ label }: { label: string }) {
         <span className="text-[11px] text-muted-foreground">{label}</span>
       </span>
     </div>
-  );
-}
-
-function subscribeReducedMotion(callback: () => void) {
-  const query = window.matchMedia('(prefers-reduced-motion: reduce)');
-  query.addEventListener('change', callback);
-  return () => query.removeEventListener('change', callback);
-}
-
-function useReducedMotion(): boolean {
-  return useSyncExternalStore(
-    subscribeReducedMotion,
-    () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-    () => false,
   );
 }
 

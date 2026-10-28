@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { FileImage, FileText, Lock, Upload } from 'lucide-react';
-import { DemoPage, useDemo } from '@/components/demo/demo-context';
+import { DemoPage, useDemo, useDemoOnly } from '@/components/demo/demo-context';
 import { PageHeader } from '@/components/page-header';
 import { Docket, Signal, type SignalLevel } from '@/components/signal';
 import { Button } from '@/components/ui/button';
@@ -54,6 +54,7 @@ const INCOMING: DemoDocument = {
 
 export function DocumentsView() {
   const { t } = useLanguage();
+  const demoOnly = useDemoOnly();
   const { play } = useDemo();
   const [progress, setProgress] = useState(0);
   const [docs, setDocs] = useState<DemoDocument[]>(DOCUMENTS);
@@ -90,7 +91,7 @@ export function DocumentsView() {
         title={t('demoVaultTitle')}
         description={t('demoVaultLede')}
         action={
-          <Button size="sm" className="h-8">
+          <Button size="sm" className="h-8" onClick={demoOnly}>
             <Upload aria-hidden />
             {t('docUpload')}
           </Button>

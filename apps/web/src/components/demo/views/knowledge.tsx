@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { BookOpen, Plus } from 'lucide-react';
-import { DemoPage } from '@/components/demo/demo-context';
+import { DemoPage, useDemoOnly } from '@/components/demo/demo-context';
 import { PageHeader } from '@/components/page-header';
 import { Docket, Signal, type SignalLevel } from '@/components/signal';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,7 @@ const SAMPLE_BODY: Record<string, string> = {
 
 export function KnowledgeView() {
   const { t } = useLanguage();
+  const demoOnly = useDemoOnly();
   const [category, setCategory] = useState<string>('all');
   const [selected, setSelected] = useState<string>(KNOWLEDGE[0]?.title ?? '');
   const categories = Array.from(new Set(KNOWLEDGE.map((k) => k.category)));
@@ -39,7 +40,7 @@ export function KnowledgeView() {
         title={t('demoLibraryTitle')}
         description={t('demoLibraryLede')}
         action={
-          <Button size="sm" className="h-8">
+          <Button size="sm" className="h-8" onClick={demoOnly}>
             <Plus aria-hidden />
             {t('kbNew')}
           </Button>

@@ -1,6 +1,7 @@
 'use client';
 
-import { DemoPage, useDemo } from '@/components/demo/demo-context';
+import { Plus } from 'lucide-react';
+import { DemoPage, useDemo, useDemoOnly } from '@/components/demo/demo-context';
 import { PageHeader } from '@/components/page-header';
 import { Signal, type SignalLevel } from '@/components/signal';
 import { Button } from '@/components/ui/button';
@@ -31,6 +32,7 @@ function statusOf(p: DemoPayment): { level: SignalLevel; key: TranslationKey } {
 export function PaymentsView() {
   const { t } = useLanguage();
   const { payments, verifyPayment } = useDemo();
+  const demoOnly = useDemoOnly();
   const sum = (f: (p: DemoPayment) => boolean) => payments.filter(f).reduce((a, p) => a + p.amountPkr, 0);
   const collected = sum((p) => p.status === 'SUCCEEDED' || p.status === 'RECORDED_MANUAL');
   const pending = sum((p) => p.status === 'PENDING');
@@ -38,7 +40,17 @@ export function PaymentsView() {
 
   return (
     <DemoPage>
-      <PageHeader eyebrow={`OCT 2026 · PKR`} title={t('payments')} description={t('demoPayLede')} />
+      <PageHeader
+        eyebrow={`OCT 2026 · PKR`}
+        title={t('payments')}
+        description={t('demoPayLede')}
+        action={
+          <Button size="sm" className="h-8" onClick={demoOnly}>
+            <Plus aria-hidden />
+            {t('recordPayment')}
+          </Button>
+        }
+      />
 
       <dl className="mb-4 grid grid-cols-1 gap-px overflow-hidden rounded-xl bg-border ring-1 ring-border sm:grid-cols-3">
         {[

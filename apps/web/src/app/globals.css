@@ -371,6 +371,86 @@ dialog.sheet[open]::backdrop {
   from { opacity: 0; }
 }
 
+/* Product tour (landing) — staggered scene beats and per-scene progress.
+   Timing is driven by the active chapter's progress bar (see product-tour.tsx). */
+.tour-beat {
+  animation: wk-fade-up 480ms var(--ease-out-quint) backwards;
+}
+.tour-pop {
+  animation: wk-tour-pop 420ms var(--ease-out-quint) backwards;
+}
+@keyframes wk-tour-pop {
+  from { opacity: 0; transform: scale(0.94); }
+}
+.tour-progress {
+  transform-origin: left;
+  animation: wk-tour-progress 6500ms linear forwards;
+}
+[dir="rtl"] .tour-progress {
+  transform-origin: right;
+}
+@keyframes wk-tour-progress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.tour-typing {
+  animation: wk-tour-typing 1000ms linear both;
+}
+@keyframes wk-tour-typing {
+  0% { max-height: 0; opacity: 0; }
+  12%, 88% { max-height: 2.5rem; opacity: 1; }
+  100% { max-height: 0; opacity: 0; margin-block: -0.25rem; }
+}
+.tour-highlight {
+  animation: wk-tour-highlight 1400ms ease-out backwards;
+}
+@keyframes wk-tour-highlight {
+  0%, 30% { background-color: color-mix(in oklch, var(--primary) 20%, transparent); }
+  100% { background-color: transparent; }
+}
+.tour-press {
+  animation: wk-tour-press 420ms ease-in-out 1600ms;
+}
+@keyframes wk-tour-press {
+  50% { transform: scale(0.93); box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 30%, transparent); }
+}
+.tour-swap-out {
+  animation: wk-tour-out 240ms ease-in 2200ms forwards;
+}
+@keyframes wk-tour-out {
+  to { opacity: 0; transform: scale(0.9); }
+}
+.tour-swap-in {
+  animation: wk-tour-pop 360ms var(--ease-out-quint) 2350ms both;
+}
+.tour-bar {
+  transform-origin: left;
+  animation: wk-tour-grow-x 700ms var(--ease-out-quint) backwards;
+}
+[dir="rtl"] .tour-bar {
+  transform-origin: right;
+}
+@keyframes wk-tour-grow-x {
+  from { transform: scaleX(0); }
+}
+.tour-rise {
+  transform-origin: bottom;
+  animation: wk-tour-grow-y 500ms var(--ease-out-quint) backwards;
+}
+@keyframes wk-tour-grow-y {
+  from { transform: scaleY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-beat, .tour-pop, .tour-highlight, .tour-press, .tour-swap-in, .tour-bar, .tour-rise { animation: none; }
+  .tour-typing { display: none; }
+  .tour-swap-out { animation: none; opacity: 0; }
+}
+
+/* Film lightbox: darker backdrop than the default dialog scrim. */
+[data-slot="dialog-overlay"]:has(~ .film-dialog) {
+  background-color: oklch(0 0 0 / 0.78);
+}
+
 /* Marketing scroll reveal — progressive enhancement, never scroll-jacking. */
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {
@@ -438,6 +518,8 @@ dialog.sheet[open]::backdrop {
 }
 
 /* ── Scrollbars ───────────────────────────────────────────────────────── */
+/* In `base` so components can opt out with `[scrollbar-width:none]`. */
+@layer base {
 * {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in oklch, var(--foreground) 18%, transparent) transparent;
@@ -457,4 +539,5 @@ dialog.sheet[open]::backdrop {
 }
 ::-webkit-scrollbar-thumb:hover {
   background-color: color-mix(in oklch, var(--foreground) 26%, transparent);
+}
 }
