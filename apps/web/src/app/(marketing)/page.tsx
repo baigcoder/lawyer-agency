@@ -22,7 +22,6 @@ import {
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
-import { HandoffBriefView } from '@/components/escalations/handoff-brief-view';
 import { FilmDialog } from '@/components/film-dialog';
 import { MarketingFooter } from '@/components/marketing-footer';
 import { MarketingHeader } from '@/components/marketing-header';
@@ -37,6 +36,7 @@ import {
   Panel,
   ProductTour,
 } from '@/components/product-tour';
+import { Signal } from '@/components/signal';
 import { Button } from '@/components/ui/button';
 import { DEMO_BRIEF } from '@/lib/demo-data';
 import { useLandingCopy } from '@/lib/landing-copy';
@@ -115,6 +115,20 @@ export default function Home() {
                     {step.title}
                   </h3>
                   <p className={cn('mt-4 max-w-lg text-[1.0625rem] leading-8 text-muted-foreground', urdu)}>{step.body}</p>
+                  {i === 2 ? (
+                    // Annotations keyed to the numbered sections of the brief card.
+                    <ol className="mt-8 grid max-w-lg gap-5 sm:grid-cols-2 lg:grid-cols-1">
+                      {copy.walk.brief.annotations.map((a, n) => (
+                        <li key={a.title} className="flex gap-3.5">
+                          <BriefMarker n={n + 1} />
+                          <div>
+                            <h4 className={cn('font-semibold', urdu)}>{a.title}</h4>
+                            <p className={cn('mt-1 text-sm leading-6 text-muted-foreground', urdu)}>{a.body}</p>
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : null}
                 </div>
                 <div className="min-w-0">
                   <WalkVisual step={i} />
@@ -366,10 +380,99 @@ function WalkVisual({ step }: { step: number }) {
     );
   }
 
+  return <BriefCard />;
+}
+
+function BriefMarker({ n }: { n: number }) {
   return (
-    <div className="rounded-xl bg-background p-4 ring-1 ring-border sm:p-5">
-      <HandoffBriefView reason={DEMO_BRIEF.reason} excerpt={m.thread.c1} brief={DEMO_BRIEF} />
-    </div>
+    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold tabular-nums text-primary-foreground">
+      {n}
+    </span>
+  );
+}
+
+function BriefCell({ n, title, urdu, children, className }: { n: number; title: string; urdu?: string; children: ReactNode; className?: string }) {
+  return (
+    <section className={cn('bg-card p-5', className)}>
+      <h4 className={cn('flex items-center gap-2.5 text-[13px] font-semibold', urdu)}>
+        <BriefMarker n={n} />
+        {title}
+      </h4>
+      <div className="mt-3 text-[13.5px] leading-6">{children}</div>
+    </section>
+  );
+}
+
+/**
+ * The lawyer handoff brief, condensed for the landing page into four numbered
+ * sections that match the annotations beside it. Same demo matter and brief
+ * data as the dashboard's HandoffBriefView.
+ */
+function BriefCard() {
+  const { dir } = useLanguage();
+  const copy = useLandingCopy();
+  const ui = copy.tour.ui;
+  const b = copy.walk.brief;
+  const urdu = dir === 'rtl' ? 'font-urdu' : undefined;
+  const m = DEMO_MATTER;
+  const facts = DEMO_BRIEF.facts ?? {};
+  const pick = ['police station', 'FIR', 'next date', 'language'].filter((k) => k in facts);
+  const docs = DEMO_BRIEF.documents?.requests ?? [];
+
+  return (
+    <article aria-label={b.title} className="overflow-hidden rounded-2xl bg-background shadow-[var(--shadow-frame)] ring-1 ring-border">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
+        <div className="min-w-0">
+          <Signal level="critical">{ui.trigger}</Signal>
+          <p dir="ltr" className="mt-1 truncate text-sm font-semibold">
+            {m.reference} · {m.client} · Lahore
+          </p>
+        </div>
+        <div className="text-end">
+          <p className={cn('text-[11px] text-muted-foreground', urdu)}>{b.respond}</p>
+          <p className="font-mono text-lg font-semibold tabular-nums text-critical">14:52</p>
+        </div>
+      </header>
+      <div className="flex items-center justify-between gap-3 border-b border-border bg-sunken/60 px-5 py-2.5">
+        <span className="flex items-center gap-2.5 text-[13px]">
+          <span className="flex size-7 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground">
+            {m.lawyerInitials}
+          </span>
+          <span className={cn('text-muted-foreground', urdu)}>{ui.assignedTo}</span>
+          <span className="font-medium">{m.lawyer}</span>
+        </span>
+        <span className={cn('rounded-md bg-primary px-3 py-1 text-[12.5px] font-medium text-primary-foreground', urdu)}>{ui.claim}</span>
+      </div>
+      <div className="grid grid-cols-1 gap-px bg-border sm:grid-cols-2">
+        <BriefCell urdu={urdu} n={1} title={b.sections[0] ?? ''}>
+          <p dir="ltr" className="text-foreground/90">{DEMO_BRIEF.reason}</p>
+        </BriefCell>
+        <BriefCell urdu={urdu} n={2} title={b.sections[1] ?? ''}>
+          <dl dir="ltr" className="space-y-1.5">
+            {pick.map((k) => (
+              <div key={k} className="flex items-baseline justify-between gap-3">
+                <dt className="shrink-0 whitespace-nowrap capitalize text-muted-foreground">{k}</dt>
+                <dd className="text-end font-medium">{facts[k]}</dd>
+              </div>
+            ))}
+          </dl>
+        </BriefCell>
+        <BriefCell urdu={urdu} n={3} title={b.sections[2] ?? ''}>
+          <ul dir="ltr" className="space-y-1.5">
+            {docs.map((d) => (
+              <li key={d.description} className="flex items-start justify-between gap-3">
+                <span className="min-w-0">{d.description}</span>
+                <Signal level="attention" className="shrink-0">{ui.requested}</Signal>
+              </li>
+            ))}
+            {DEMO_BRIEF.openItems?.[0] ? <li className="pt-1 text-muted-foreground">{DEMO_BRIEF.openItems[0]}</li> : null}
+          </ul>
+        </BriefCell>
+        <BriefCell urdu={urdu} n={4} title={b.sections[3] ?? ''} className="bg-[color-mix(in_oklch,var(--primary)_7%,var(--card))]">
+          <p dir="ltr" className="font-medium">{DEMO_BRIEF.nextAction}</p>
+        </BriefCell>
+      </div>
+    </article>
   );
 }
 

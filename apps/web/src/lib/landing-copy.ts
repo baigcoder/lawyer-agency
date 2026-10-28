@@ -165,6 +165,18 @@ const en = {
         body: 'Why it was escalated, what is known, which documents are missing and the suggested next step. The arrest signal stopped automation, so nothing else was sent to the client.',
       },
     ],
+    brief: {
+      title: 'Handoff brief',
+      respond: 'Respond within',
+      claimed: 'Claimed',
+      sections: ['Why it was escalated', 'Facts collected', 'Still missing', 'Suggested next step'],
+      annotations: [
+        { title: 'Why it was escalated', body: 'The trigger in plain words, so the lawyer knows the stakes before opening the chat.' },
+        { title: 'Facts already collected', body: 'Client, police station, FIR and hearing date, taken from the conversation. Nothing to retype.' },
+        { title: 'What is still missing', body: 'Documents and open questions, so the first call is short and specific.' },
+        { title: 'One next step', body: 'A concrete action with a time. The lawyer claims the matter and the clock stops.' },
+      ],
+    },
   },
   features: {
     eyebrow: 'The product',
@@ -436,6 +448,18 @@ const ur: LandingCopy = {
         body: 'معاملہ کیوں بھیجا گیا، کیا معلوم ہے، کون سی دستاویزات باقی ہیں اور تجویز کردہ اگلا قدم۔ گرفتاری کے اشارے نے خودکار جواب روک دیے، اس لیے کلائنٹ کو مزید کچھ نہیں بھیجا گیا۔',
       },
     ],
+    brief: {
+      title: 'حوالگی بریف',
+      respond: 'جواب کا وقت',
+      claimed: 'لے لیا گیا',
+      sections: ['کیوں بھیجا گیا', 'جمع شدہ معلومات', 'ابھی باقی', 'تجویز کردہ اگلا قدم'],
+      annotations: [
+        { title: 'کیوں بھیجا گیا', body: 'وجہ سادہ الفاظ میں، تاکہ وکیل چیٹ کھولنے سے پہلے معاملے کی سنگینی جان لے۔' },
+        { title: 'پہلے سے جمع معلومات', body: 'کلائنٹ، تھانہ، ایف آئی آر اور پیشی کی تاریخ، گفتگو سے لی گئی۔ دوبارہ لکھنے کی ضرورت نہیں۔' },
+        { title: 'جو ابھی باقی ہے', body: 'دستاویزات اور کھلے سوالات، تاکہ پہلی کال مختصر اور واضح ہو۔' },
+        { title: 'ایک اگلا قدم', body: 'وقت کے ساتھ ایک واضح کام۔ وکیل معاملہ لیتا ہے اور گھڑی رک جاتی ہے۔' },
+      ],
+    },
   },
   features: {
     eyebrow: 'پروڈکٹ',
