@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { guardReply, type ReplyGuardInput } from './reply-guard';
+import { amountsIn, guardReply, type ReplyGuardInput } from './reply-guard';
 
 const base: ReplyGuardInput = {
   clientText: '',
@@ -9,11 +9,32 @@ const base: ReplyGuardInput = {
 };
 
 describe('guardReply', () => {
+  it('drops a rupee amount nobody gave, keeps the known fee', () => {
+    expect(
+      guardReply('Consultation fee PKR 5,000 hai. Case ki fee taqreeban Rs 50,000 hogi.', {
+        ...base,
+        clientText: 'fee kitni hai?',
+        sources: 'Consultation fee PKR 5000',
+      }),
+    ).toBe('Consultation fee PKR 5,000 hai.');
+  });
+
+  it('accepts the same amount written another way', () => {
+    const reply = 'Mashwara fee 5 hazar rupay hai.';
+    expect(guardReply(reply, { ...base, sources: 'Consultation fee PKR 5,000' })).toBe(reply);
+  });
+
+  it('accepts an amount the client mentioned', () => {
+    const reply = 'Ji, aap ne Rs 15,000 Easypaisa par bheje, hum check kar rahe hain.';
+    expect(guardReply(reply, { ...base, clientText: 'maine 15000 rupay bhej diye' })).toBe(reply);
+  });
+
   it('drops a duration the firm never gave, keeps the rest', () => {
     expect(
       guardReply('Khula ka process aam tor par 3-6 mahine lag sakta hai. Consultation fee PKR 5,000 hai.', {
         ...base,
         clientText: 'khula ka kitna time lagta hai?',
+        sources: 'Consultation fee PKR 5000',
       }),
     ).toBe('Consultation fee PKR 5,000 hai.');
     expect(
@@ -62,5 +83,18 @@ describe('guardReply', () => {
 
   it('never empties the reply', () => {
     expect(guardReply('Is mein 6 mahine lagte hain.', base)).toBe('Is mein 6 mahine lagte hain.');
+  });
+});
+
+describe('amountsIn', () => {
+  it('reads PKR, Rs, rupay, hazar, lakh and Urdu digits', () => {
+    expect([...amountsIn('PKR 5,000 / Rs. 2500 / 3000 rupay / 5 hazar / 2 lakh rupees / ۵۰۰۰ روپے')]).toEqual([
+      5000, 2500, 3000, 200000,
+    ]);
+  });
+
+  it('ignores numbers that are not money', () => {
+    expect(amountsIn('FIR 412/26, hearing at 9, room 5').size).toBe(0);
+    expect(amountsIn('Mere rs wale dost').size).toBe(0);
   });
 });

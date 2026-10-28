@@ -27,7 +27,8 @@ describe('keywordScan — unambiguous emergencies', () => {
   });
 
   it('still catches an imminent hearing', () => {
-    expect(keywordScan('my hearing is tomorrow')).toBeNull();
+    // Used to be a known miss; a hearing within 48h must escalate (D-009, red-team set).
+    expect(keywordScan('my hearing is tomorrow')).toMatchObject({ triggerType: 'IMMINENT_DEADLINE' });
     expect(keywordScan('hearing tomorrow, what do I bring?')).toMatchObject({
       triggerType: 'IMMINENT_DEADLINE',
     });

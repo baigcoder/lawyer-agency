@@ -152,6 +152,34 @@ export class EvolutionApiClient {
     return { wamid: this.extractMessageId(response) };
   }
 
+  /**
+   * Shows "typing…" (`composing`) or "recording audio…" (`recording`) to the
+   * client for `delayMs`. Evolution holds the request for that long, so callers
+   * should not hold a DB transaction across it.
+   */
+  async sendPresence(input: {
+    instanceName: string;
+    to: string;
+    presence: 'composing' | 'recording' | 'paused';
+    delayMs: number;
+  }): Promise<void> {
+    await this.call(
+      'POST',
+      `/chat/sendPresence/${input.instanceName}`,
+      { number: this.normalizeNumber(input.to), presence: input.presence, delay: input.delayMs },
+      { timeoutMs: input.delayMs + 10_000 },
+    );
+  }
+
+  /** Blue ticks on the client's messages, as a person reading them would give. */
+  async markMessagesRead(input: { instanceName: string; from: string; wamids: string[] }): Promise<void> {
+    if (input.wamids.length === 0) return;
+    const remoteJid = `${this.normalizeNumber(input.from)}@s.whatsapp.net`;
+    await this.call('POST', `/chat/markMessageAsRead/${input.instanceName}`, {
+      readMessages: input.wamids.map((id) => ({ remoteJid, fromMe: false, id })),
+    });
+  }
+
   /** WhatsApp PTT voice note. `encoding: true` converts mp3/wav to opus. */
   async sendWhatsAppAudio(input: {
     instanceName: string;

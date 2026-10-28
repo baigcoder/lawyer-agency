@@ -24,8 +24,9 @@ const LIVE_BUDGET_MS = 14_000;
 const LIVE_SAMPLE_RATE = 24_000;
 
 /**
- * Text-to-speech across engines, in a configurable order (default
- * Groq → ElevenLabs → Gemini), then local espeak for voice notes.
+ * Text-to-speech across engines, in a configurable order per language
+ * (English: Groq → ElevenLabs → Gemini; Urdu: Gemini → ElevenLabs), then local
+ * espeak for voice notes.
  *
  * An engine is skipped when it is not configured or cannot speak the reply's
  * language (Groq's Orpheus is English-only), and passed over when it errors,
@@ -38,7 +39,7 @@ const LIVE_SAMPLE_RATE = 24_000;
 @Injectable()
 export class CompositeTtsClient implements TextToSpeechPort {
   private readonly logger = new Logger(CompositeTtsClient.name);
-  private readonly order: TtsProvider[];
+  private readonly order: Record<'en' | 'ur', TtsProvider[]>;
 
   constructor(
     config: ConfigService<Env, true>,
@@ -46,7 +47,13 @@ export class CompositeTtsClient implements TextToSpeechPort {
     private readonly groq: GroqTtsClient,
     private readonly gemini: GeminiTtsClient,
   ) {
-    this.order = parseProviderOrder(config.get('TTS_PROVIDER_ORDER', { infer: true }));
+    // Per language: Urdu defaults to Gemini first, because ElevenLabs' free tier
+    // only allows its built-in English voices over the API, which mispronounce
+    // Urdu (native Urdu library voices need a paid plan).
+    this.order = {
+      en: parseProviderOrder(config.get('TTS_PROVIDER_ORDER', { infer: true })),
+      ur: parseProviderOrder(config.get('TTS_PROVIDER_ORDER_UR', { infer: true })),
+    };
   }
 
   isConfigured(): boolean {
@@ -71,7 +78,7 @@ export class CompositeTtsClient implements TextToSpeechPort {
     const deadline = Date.now() + (live ? LIVE_BUDGET_MS : NOTE_BUDGET_MS);
     const failures: string[] = [];
 
-    for (const provider of this.order) {
+    for (const provider of this.order[language]) {
       if (Date.now() >= deadline) break;
       try {
         const result = await this.tryProvider(provider, input, language, live, deadline);

@@ -1,4 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import type { Env } from '../../../config/env';
+import { RetryLaterError } from '../../../common/errors/retry-later.error';
 import { UnitOfWork } from '../../../common/prisma/unit-of-work';
 import { toInputJson } from '../../../common/persistence/json';
 import { DOMAIN_EVENTS } from '../../../common/events/domain-events';
@@ -9,6 +12,7 @@ import { RETRIEVER, type Retriever } from '../../rag/application/retriever.port'
 import { matchPakistanLawyerKnowledge } from '../../rag/application/pakistan-lawyer-knowledge';
 import { PakistanKbSeedService } from '../../rag/application/pakistan-kb-seed.service';
 import { detectLanguage, languageForUnusableVoiceNote, languageFromTranscript, MasterRouterService } from './agents/master-router.service';
+import { DEFAULT_BURST_OPTIONS, planBurstTurn, type BurstOptions } from './burst-turn';
 import { IntakeAgent } from './agents/intake.agent';
 import { FaqAgent } from './agents/faq.agent';
 import { CaseUpdateAgent } from './agents/case-update.agent';
@@ -104,6 +108,17 @@ interface InboundTurn {
   createdAt: Date;
   payload: unknown;
   extractedFields: Record<string, unknown>;
+  /** Every inbound message this turn answers (the trigger plus any burst before it). */
+  answers: Array<{ id: string; createdAt: Date; wamid: string | null }>;
+}
+
+const MEDIA_TYPES = new Set(['AUDIO', 'IMAGE', 'DOCUMENT', 'VIDEO']);
+
+/** Media not yet transcribed / stored: its own AI event has not fired yet. */
+export function isMediaStillProcessing(row: { contentType: string; body: string | null; payload: unknown }): boolean {
+  if (!MEDIA_TYPES.has(row.contentType)) return false;
+  if (row.body && row.body.trim()) return false;
+  return !('mediaPath' in asFieldRecord(row.payload));
 }
 
 function asFieldRecord(value: unknown): Record<string, unknown> {
@@ -171,7 +186,19 @@ export class AiOrchestratorService {
     private readonly documentRequests: DocumentRequestsService,
     private readonly cases: CasesService,
     private readonly handoffBriefAgent: HandoffBriefAgent,
-  ) {}
+    config: ConfigService<Env, true>,
+  ) {
+    this.burstOptions = {
+      ...DEFAULT_BURST_OPTIONS,
+      settleMs: config.get('AI_BURST_SETTLE_MS', { infer: true }),
+      maxWaitMs: config.get('AI_BURST_MAX_WAIT_MS', { infer: true }),
+    };
+    this.maxRepliesPerHour = config.get('AI_MAX_REPLIES_PER_HOUR', { infer: true });
+  }
+
+  private readonly maxRepliesPerHour: number;
+
+  private readonly burstOptions: BurstOptions;
 
   async process(params: ProcessInboundMessage): Promise<void> {
     // One load for all three intercepts. Each used to open its own tenant
@@ -190,6 +217,23 @@ export class AiOrchestratorService {
       return;
     }
 
+    // A burst of messages is answered once, by its newest message (burst-turn.ts).
+    const burst = await this.resolveBurst(params, inbound);
+    if (burst.action === 'skip') {
+      this.logger.log(
+        { conversationId: params.conversationId, messageId: params.messageId },
+        `AI turn skipped: ${burst.reason}`,
+      );
+      return;
+    }
+    if (burst.action === 'wait') {
+      throw new RetryLaterError(`AI turn deferred: ${burst.reason}`, burst.delayMs);
+    }
+    inbound.clientText = burst.clientText;
+    inbound.answers = burst.answers;
+    const turnStartedAt = Date.now();
+    const readWamids = inbound.answers.flatMap((a) => (a.wamid ? [a.wamid] : []));
+
     // Each intercept sends its own WhatsApp message and then returns true, so
     // completion is marked here — once, after the send, for every branch.
     if (await this.tryPaymentDetailsIntercept(params, inbound)) {
@@ -205,177 +249,220 @@ export class AiOrchestratorService {
       return;
     }
 
-    const outcome = await this.uow.withTenant(params.tenantId, async (tx): Promise<OrchestratorSend> => {
+    // Phase 1 — read, in a short transaction. Retrieval and the model calls
+    // take seconds; they used to run inside one transaction, holding a pooled
+    // connection (two, with the retriever's own) for the whole turn, which is
+    // how a busy hour starves the dashboard of connections.
+    const loaded = await this.uow.withTenant(params.tenantId, async (tx) => {
       const conversation = await tx.conversation.findUnique({
         where: { id: params.conversationId },
         include: { case: true, client: true },
       });
-      if (!conversation) return { kind: 'none' };
+      if (!conversation) return null;
 
       const message = await tx.message.findFirst({
         where: { id: params.messageId },
       });
-      if (!message || message.direction !== 'INBOUND') return { kind: 'none' };
+      if (!message || message.direction !== 'INBOUND') return null;
 
-      const clientText = message.body ?? '';
-      const inboundPayload = asFieldRecord(message.payload);
-      const sttLanguage =
-        typeof inboundPayload['transcriptLanguage'] === 'string' ? inboundPayload['transcriptLanguage'] : null;
       const tenant = await tx.tenant.findUnique({ where: { id: params.tenantId }, select: { aiProviderAllowlist: true } });
-      const allowlist = tenant?.aiProviderAllowlist ?? [];
-      const likelyNeedsRag = !isShortGreeting(clientText) && !isCasualOffTopic(clientText);
-      if (likelyNeedsRag) {
-        this.pakistanKb.ensureForTenantInBackground(params.tenantId);
-      }
-      const retrievalPromise = likelyNeedsRag
-        ? this.retriever.search({
-            tenantId: params.tenantId,
-            query: clientText,
-            language: languageFromTranscript(clientText, ['EN', 'UR', 'ROMAN_URDU'], sttLanguage),
-            topK: 6,
-            clientId: conversation.clientId,
-            caseId: conversation.caseId ?? undefined,
-          })
-        : Promise.resolve([]);
-
       const context = await this.contextBuilder.build({
         tenantId: params.tenantId,
         conversationId: params.conversationId,
         tx,
         retrievedChunks: [],
       });
-      // Set before any agent runs, so the prompt can require Urdu script when
-      // the answer is going to be spoken rather than read.
-      context.replyWillBeSpoken = shouldUseVoiceReply(context.aiSettings, message.contentType);
-      const retrievedChunks = selectRelevantChunks([
-        ...(await retrievalPromise),
-        ...(likelyNeedsRag ? matchPakistanLawyerKnowledge(clientText) : []),
-      ]);
-      context.retrievedChunks = retrievedChunks;
-      context.retrievedContext = formatRetrievedContext(retrievedChunks);
+      // Per-conversation ceiling: a spammer or a reply loop must not drain the
+      // firm's AI budget. Past it the AI stays quiet and staff take over.
+      const recentAiReplies =
+        this.maxRepliesPerHour > 0
+          ? await tx.message.count({
+              where: {
+                conversationId: params.conversationId,
+                direction: 'OUTBOUND',
+                senderType: 'AI',
+                createdAt: { gte: new Date(Date.now() - 60 * 60 * 1000) },
+              },
+            })
+          : 0;
+      return { conversation, message, allowlist: tenant?.aiProviderAllowlist ?? [], context, recentAiReplies };
+    });
+    if (!loaded) {
+      await this.markTurnCompleted(params, inbound);
+      return;
+    }
+    if (this.maxRepliesPerHour > 0 && loaded.recentAiReplies >= this.maxRepliesPerHour) {
+      this.logger.warn(
+        { conversationId: params.conversationId, recentAiReplies: loaded.recentAiReplies },
+        'AI reply limit reached for this conversation — leaving it to staff',
+      );
+      await this.markTurnCompleted(params, inbound);
+      return;
+    }
+    const { conversation, message, allowlist, context } = loaded;
 
-      const heuristic = fastRoute({
+    // Phase 2 — think, with no transaction open: retrieval and every model call.
+    const clientText = inbound.clientText;
+    const inboundPayload = asFieldRecord(message.payload);
+    const sttLanguage =
+      typeof inboundPayload['transcriptLanguage'] === 'string' ? inboundPayload['transcriptLanguage'] : null;
+    const likelyNeedsRag = !isShortGreeting(clientText) && !isCasualOffTopic(clientText);
+    if (likelyNeedsRag) {
+      this.pakistanKb.ensureForTenantInBackground(params.tenantId);
+    }
+    const retrievalPromise = likelyNeedsRag
+      ? this.retriever.search({
+          tenantId: params.tenantId,
+          query: clientText,
+          language: languageFromTranscript(clientText, ['EN', 'UR', 'ROMAN_URDU'], sttLanguage),
+          topK: 6,
+          clientId: conversation.clientId,
+          caseId: conversation.caseId ?? undefined,
+        })
+      : Promise.resolve([]);
+
+    // Set before any agent runs, so the prompt can require Urdu script when
+    // the answer is going to be spoken rather than read.
+    context.replyWillBeSpoken = shouldUseVoiceReply(context.aiSettings, message.contentType);
+    const retrievedChunks = selectRelevantChunks([
+      ...(await retrievalPromise),
+      ...(likelyNeedsRag ? matchPakistanLawyerKnowledge(clientText) : []),
+    ]);
+    context.retrievedChunks = retrievedChunks;
+    context.retrievedContext = formatRetrievedContext(retrievedChunks);
+
+    const heuristic = fastRoute({
+      clientText,
+      hasOpenCase: Boolean(conversation.caseId),
+      hasIntakeFields: Object.keys(context.intakeFields).length > 0,
+    });
+    const skipRouter = Boolean(heuristic && heuristic.confidence >= 0.85);
+
+    const [escalation, route] = await Promise.all([
+      this.escalationDetector.detect({
+        tenantId: params.tenantId,
+        tenantAllowlist: allowlist,
         clientText,
-        hasOpenCase: Boolean(conversation.caseId),
-        hasIntakeFields: Object.keys(context.intakeFields).length > 0,
-      });
-      const skipRouter = Boolean(heuristic && heuristic.confidence >= 0.85);
+        correlationId: params.correlationId,
+      }),
+      skipRouter && heuristic
+        ? Promise.resolve({
+            intent: heuristic.intent,
+            reasoning: heuristic.reasoning,
+            confidence: heuristic.confidence,
+            language: languageFromTranscript(clientText, context.firm.clientLanguages, sttLanguage),
+          })
+        : this.router
+            .route({
+              tenantId: params.tenantId,
+              tenantAllowlist: allowlist,
+              clientText,
+              conversationState: conversation.state,
+              hasOpenCase: !!conversation.caseId,
+              clientLanguages: context.firm.clientLanguages,
+              conversationHistory: context.conversationHistory,
+              correlationId: params.correlationId,
+            })
+            .catch((error: unknown) => {
+              this.logger.warn(
+                { err: error instanceof Error ? error.message : 'router' },
+                'router LLM failed — using heuristic',
+              );
+              const fallback = heuristic ?? {
+                intent: 'GREETING' as const,
+                reasoning: 'router unavailable',
+                confidence: 0.5,
+              };
+              return {
+                intent: fallback.intent,
+                reasoning: fallback.reasoning,
+                confidence: fallback.confidence,
+                language: languageFromTranscript(clientText, context.firm.clientLanguages, sttLanguage),
+              };
+            }),
+    ]);
 
-      const [escalation, route] = await Promise.all([
-        this.escalationDetector.detect({
+    const detected = isUnusableVoiceTranscript(clientText)
+      ? languageForUnusableVoiceNote(context.firm.clientLanguages)
+      : languageFromTranscript(clientText, context.firm.clientLanguages, sttLanguage);
+    const language = applyReplyLanguagePolicy(detected, context.aiSettings);
+    // Decided once, by the same rule as the prompt's language label, so the
+    // fixed replies (handoff, off-topic, failure) match the agent's script.
+    context.replyInRomanUrdu = wantsRomanUrdu(language, clientText, context.replyWillBeSpoken);
+    let intent: AgentIntent = escalation
+      ? 'HUMAN_HANDOFF'
+      : applyFirmScopeIntent(route.intent, clientText, context.aiSettings);
+
+    if (!escalation && isShortGreeting(clientText) && intent === 'INTAKE') {
+      intent = 'GREETING';
+    }
+    if (!escalation && conversation.caseId && intent === 'INTAKE') {
+      intent = 'CASE_UPDATE';
+    }
+
+    const agentResult = escalation
+      ? {
+          responseText: renderHandoffMessage(context, language),
+          languageDetected: language,
+          citations: [] as Citation[],
+          escalation,
+        }
+      : await this.runAgent(intent, {
           tenantId: params.tenantId,
           tenantAllowlist: allowlist,
           clientText,
+          language,
+          context,
+          conversation,
           correlationId: params.correlationId,
-        }),
-        skipRouter && heuristic
-          ? Promise.resolve({
-              intent: heuristic.intent,
-              reasoning: heuristic.reasoning,
-              confidence: heuristic.confidence,
-              language: languageFromTranscript(clientText, context.firm.clientLanguages, sttLanguage),
-            })
-          : this.router
-              .route({
-                tenantId: params.tenantId,
-                tenantAllowlist: allowlist,
-                clientText,
-                conversationState: conversation.state,
-                hasOpenCase: !!conversation.caseId,
-                clientLanguages: context.firm.clientLanguages,
-                conversationHistory: context.conversationHistory,
-                correlationId: params.correlationId,
-              })
-              .catch((error: unknown) => {
-                this.logger.warn(
-                  { err: error instanceof Error ? error.message : 'router' },
-                  'router LLM failed — using heuristic',
-                );
-                const fallback = heuristic ?? {
-                  intent: 'GREETING' as const,
-                  reasoning: 'router unavailable',
-                  confidence: 0.5,
-                };
-                return {
-                  intent: fallback.intent,
-                  reasoning: fallback.reasoning,
-                  confidence: fallback.confidence,
-                  language: languageFromTranscript(clientText, context.firm.clientLanguages, sttLanguage),
-                };
-              }),
-      ]);
-
-      const detected = isUnusableVoiceTranscript(clientText)
-        ? languageForUnusableVoiceNote(context.firm.clientLanguages)
-        : languageFromTranscript(clientText, context.firm.clientLanguages, sttLanguage);
-      const language = applyReplyLanguagePolicy(detected, context.aiSettings);
-      // Decided once, by the same rule as the prompt's language label, so the
-      // fixed replies (handoff, off-topic, failure) match the agent's script.
-      context.replyInRomanUrdu = wantsRomanUrdu(language, clientText, context.replyWillBeSpoken);
-      let intent: AgentIntent = escalation
-        ? 'HUMAN_HANDOFF'
-        : applyFirmScopeIntent(route.intent, clientText, context.aiSettings);
-
-      if (!escalation && isShortGreeting(clientText) && intent === 'INTAKE') {
-        intent = 'GREETING';
-      }
-      if (!escalation && conversation.caseId && intent === 'INTAKE') {
-        intent = 'CASE_UPDATE';
-      }
-
-      const agentResult = escalation
-        ? {
-            responseText: renderHandoffMessage(context, language),
+          escalation,
+        }).catch((error: unknown): AgentResult => {
+          this.logger.warn(
+            { err: error instanceof Error ? error.message : 'agent' },
+            'agent LLM failed — using fallback reply',
+          );
+          return {
+            responseText: renderAgentFailureReply(
+              context,
+              language,
+              message.contentType === 'AUDIO' ? 'voice' : 'text',
+            ),
             languageDetected: language,
-            citations: [] as Citation[],
-            escalation,
+            citations: [],
+          };
+        });
+    const effectiveEscalation =
+      escalation ??
+      (intent === 'HUMAN_HANDOFF' || agentResult.needsLawyer
+        ? {
+            triggerType: 'MANUAL' as const,
+            reason: agentResult.handoffReason || route.reasoning || 'Lawyer review requested',
+            excerpt: clientText.slice(0, 200),
           }
-        : await this.runAgent(intent, {
-            tenantId: params.tenantId,
-            tenantAllowlist: allowlist,
-            clientText,
-            language,
-            context,
-            conversation,
-            correlationId: params.correlationId,
-            escalation,
-          }).catch((error: unknown): AgentResult => {
-            this.logger.warn(
-              { err: error instanceof Error ? error.message : 'agent' },
-              'agent LLM failed — using fallback reply',
-            );
-            return {
-              responseText: renderAgentFailureReply(
-                context,
-                language,
-                message.contentType === 'AUDIO' ? 'voice' : 'text',
-              ),
-              languageDetected: language,
-              citations: [],
-            };
-          });
-      const effectiveEscalation =
-        escalation ??
-        (intent === 'HUMAN_HANDOFF' || agentResult.needsLawyer
-          ? {
-              triggerType: 'MANUAL' as const,
-              reason: agentResult.handoffReason || route.reasoning || 'Lawyer review requested',
-              excerpt: clientText.slice(0, 200),
-            }
-          : null);
-      const responseText = renderFirstTurnDisclosure(
-        context,
-        language,
-        guardReply(rewriteMissingAnswerReply(agentResult.responseText, language), {
-          clientText,
-          sources: `${context.retrievedContext}
-${context.conversationHistory}`,
-          differentiators: context.firm.differentiators ?? [],
-          voiceGender: context.aiSettings.aiVoiceGender,
-        }),
-        message.contentType === 'AUDIO' ? 'voice' : 'text',
-      );
+        : null);
+    const responseText = renderFirstTurnDisclosure(
+      context,
+      language,
+      guardReply(rewriteMissingAnswerReply(agentResult.responseText, language), {
+        clientText,
+        // The firm's own fee is a known figure too, or the money check would drop it.
+        sources: `${context.retrievedContext}
+${context.conversationHistory}
+${context.firm.consultationFeePkr ? `Consultation fee PKR ${context.firm.consultationFeePkr}` : ''}`,
+        differentiators: context.firm.differentiators ?? [],
+        voiceGender: context.aiSettings.aiVoiceGender,
+      }),
+      message.contentType === 'AUDIO' ? 'voice' : 'text',
+    );
 
+    // Phase 3 — write, in a second short transaction, against fresh state: a
+    // lawyer may have taken the conversation over while the model was thinking.
+    const outcome = await this.uow.withTenant(params.tenantId, async (tx): Promise<OrchestratorSend> => {
+      const fresh = await tx.conversation.findUnique({
+        where: { id: params.conversationId },
+        select: { state: true },
+      });
+      const conversationState = fresh?.state ?? conversation.state;
       await tx.message.update({
         where: { id_createdAt: { id: message.id, createdAt: message.createdAt } },
         data: {
@@ -508,7 +595,7 @@ ${context.conversationHistory}`,
 
       if (
         !shouldSendAiReply({
-          conversationState: conversation.state,
+          conversationState,
           hasOpenEscalation: Boolean(openEscalation),
           responseText,
         })
@@ -532,7 +619,7 @@ ${context.conversationHistory}`,
         return { kind: 'none' };
       }
 
-      if (conversation.state === 'HUMAN_REQUIRED') {
+      if (conversationState === 'HUMAN_REQUIRED') {
         await tx.conversation.update({
           where: { id: params.conversationId },
           data: { state: 'AI_ACTIVE' },
@@ -557,6 +644,8 @@ ${context.conversationHistory}`,
         responseText: outcome.responseText,
         language: outcome.language,
         inboundContentType: outcome.inboundContentType,
+        readWamids,
+        turnStartedAt,
       });
       await this.markTurnCompleted(params, inbound);
       return;
@@ -570,6 +659,8 @@ ${context.conversationHistory}`,
         responseText: outcome.handoffText,
         language: outcome.language,
         inboundContentType: outcome.inboundContentType,
+        readWamids,
+        turnStartedAt,
       });
       await this.markTurnCompleted(params, inbound);
       await this.enrichHandoffSituation(params.tenantId, params.correlationId, outcome);
@@ -859,6 +950,7 @@ ${context.conversationHistory}`,
         createdAt: message.createdAt,
         payload: message.payload,
         extractedFields: asFieldRecord(intake?.extractedFields),
+        answers: [{ id: message.id, createdAt: message.createdAt, wamid: message.wamid }],
       };
     });
   }
@@ -891,17 +983,21 @@ ${context.conversationHistory}`,
   private async markTurnCompleted(params: ProcessInboundMessage, loaded: InboundTurn): Promise<void> {
     try {
       await this.uow.withTenant(params.tenantId, async (tx) => {
-        const current = await tx.message.findFirst({ where: { id: loaded.messageId } });
-        if (!current) return;
-        await tx.message.update({
-          where: { id_createdAt: { id: loaded.messageId, createdAt: loaded.createdAt } },
-          data: {
-            payload: toInputJson({
-              ...asFieldRecord(current.payload),
-              ...turnCompletedMarker(),
-            }),
-          },
-        });
+        // Every message the turn answered, so a delayed event for an earlier
+        // message in the burst sees it as done instead of replying again.
+        for (const answered of loaded.answers) {
+          const current = await tx.message.findFirst({ where: { id: answered.id } });
+          if (!current) continue;
+          await tx.message.update({
+            where: { id_createdAt: { id: answered.id, createdAt: answered.createdAt } },
+            data: {
+              payload: toInputJson({
+                ...asFieldRecord(current.payload),
+                ...turnCompletedMarker(),
+              }),
+            },
+          });
+        }
       });
     } catch (error) {
       // A missing marker only risks a duplicate reply on retry; never fail the
@@ -911,6 +1007,67 @@ ${context.conversationHistory}`,
         'could not mark AI turn complete',
       );
     }
+  }
+
+  /**
+   * The unanswered inbound messages since the last outbound one, and what this
+   * turn should do about them (skip / wait / answer them together).
+   */
+  private async resolveBurst(
+    params: ProcessInboundMessage,
+    inbound: InboundTurn,
+  ): Promise<
+    | { action: 'skip'; reason: string }
+    | { action: 'wait'; delayMs: number; reason: string }
+    | { action: 'answer'; clientText: string; answers: InboundTurn['answers'] }
+  > {
+    const alone = { action: 'answer' as const, clientText: inbound.clientText, answers: inbound.answers };
+    if (this.burstOptions.settleMs <= 0) return alone;
+
+    const rows = await this.uow.withTenant(params.tenantId, async (tx) => {
+      const lastOutbound = await tx.message.findFirst({
+        where: { conversationId: params.conversationId, direction: 'OUTBOUND' },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      });
+      return tx.message.findMany({
+        where: {
+          conversationId: params.conversationId,
+          direction: 'INBOUND',
+          ...(lastOutbound ? { createdAt: { gt: lastOutbound.createdAt } } : {}),
+        },
+        orderBy: { createdAt: 'desc' },
+        take: this.burstOptions.maxMessages * 2,
+        select: { id: true, createdAt: true, body: true, contentType: true, payload: true, wamid: true },
+      });
+    });
+    const pending = rows
+      .filter((row) => row.id === inbound.messageId || !isTurnCompleted(row.payload))
+      .map((row) => ({
+        id: row.id,
+        createdAt: row.createdAt,
+        wamid: row.wamid,
+        body: row.id === inbound.messageId ? inbound.clientText : row.body,
+        processing: isMediaStillProcessing(row),
+      }));
+
+    const plan = planBurstTurn({
+      pending,
+      triggerId: inbound.messageId,
+      now: Date.now(),
+      options: this.burstOptions,
+    });
+    if (plan.action !== 'answer') return plan;
+    if (plan.messageIds.length <= 1) return alone;
+    const byId = new Map(pending.map((m) => [m.id, m]));
+    return {
+      action: 'answer',
+      clientText: plan.clientText,
+      answers: plan.messageIds.flatMap((id) => {
+        const row = byId.get(id);
+        return row ? [{ id, createdAt: row.createdAt, wamid: row.wamid }] : [];
+      }),
+    };
   }
 
   private async tagInboundIntent(

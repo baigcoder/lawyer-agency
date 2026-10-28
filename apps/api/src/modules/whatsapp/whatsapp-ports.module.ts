@@ -26,6 +26,7 @@ import { FallbackObjectStorage } from './infrastructure/fallback-object-storage'
 import { DevMockMetaCloudApi } from './infrastructure/dev-mock-meta-cloud-api';
 import { EvolutionOutboundSender } from './application/evolution-outbound-sender.service';
 import { SendService } from './application/send.service';
+import { HumanPresenceService } from './application/human-presence.service';
 import { MediaReadService } from './application/media-read.service';
 import { EvolutionApiClient } from './infrastructure/evolution-api.client';
 export { EvolutionApiClient };
@@ -66,6 +67,7 @@ import type { Env } from '../../config/env';
     },
     { provide: OUTBOUND_SENDER, useClass: EvolutionOutboundSender },
     SendService,
+    HumanPresenceService,
     MediaReadService,
     { provide: META_OAUTH_CLIENT, useClass: MetaOAuthClientImpl },
     FilesystemObjectStorage,
@@ -101,6 +103,7 @@ import type { Env } from '../../config/env';
     OBJECT_STORAGE,
     OUTBOUND_SENDER,
     SendService,
+    HumanPresenceService,
     MediaReadService,
     EvolutionApiClient,
     WHATSAPP_CALLING,

@@ -6,7 +6,9 @@
  *   never gave, read by the client as a promise;
  * - the firm's sales line in a bail answer ("same-day bail response") — heard
  *   as "you will get bail today";
- * - a masculine verb from the female assistant ("samajh gaya", "سمجھ گیا").
+ * - a masculine verb from the female assistant ("samajh gaya", "سمجھ گیا");
+ * - a rupee amount nobody gave ("case fee PKR 50,000 hogi") — quoted back to
+ *   the firm by the client as a promised price.
  *
  * Each fix only removes or re-inflects; it never writes new content.
  */
@@ -21,13 +23,20 @@ export interface ReplyGuardInput {
 const DURATION =
   /(\d+(?:\s*(?:-|–|to|se|سے)\s*\d+)?)\s*(?:mahine|mahina|months?|saal|years?|din|days?|hafte|hafta|weeks?|ghante|hours?|مہینے|مہینہ|سال|دن|ہفتے|گھنٹے)/gi;
 
+/** A money amount: "PKR 5,000", "Rs. 5000", "5000 rupay", "5 hazar", "50k", "۵۰۰۰ روپے". */
+const MONEY =
+  /(?:(?:\bpkr|\brs\.?|\brup(?:ees?|ay|ey|ya)|روپے)\s*([\d٠-٩۰-۹][\d٠-٩۰-۹,]*(?:\.\d+)?)\s*(k|hazaa?r|thousand|ہزار|lakh|لاکھ)?)|(?:([\d٠-٩۰-۹][\d٠-٩۰-۹,]*(?:\.\d+)?)\s*(k|hazaa?r|thousand|ہزار|lakh|لاکھ)?\s*(?:pkr\b|rs\b|rup(?:ees?|ay|ey|ya|e)\b|روپے))/gi;
+
 const OUTCOME_QUESTION = /bail|zamanat|guarantee|gaurantee|ضمانت|گارنٹی|kitne din|kab tak|how long|outcome|result|faisla|فیصلہ/i;
 
 export function guardReply(text: string, input: ReplyGuardInput): string {
   const known = `${input.clientText}\n${input.sources}`;
   const outcomeQuestion = OUTCOME_QUESTION.test(input.clientText);
+  const knownAmounts = amountsIn(known);
   const bad = (clause: string) =>
-    inventsDuration(clause, known) || (outcomeQuestion && mentionsDifferentiator(clause, input.differentiators));
+    inventsDuration(clause, known) ||
+    inventsAmount(clause, knownAmounts) ||
+    (outcomeQuestion && mentionsDifferentiator(clause, input.differentiators));
   const lines = text.split('\n').map((line) =>
     splitSentences(line)
       .map((s) => (bad(s) ? dropClauses(s, bad) : s))
@@ -52,7 +61,8 @@ function dropClauses(sentence: string, bad: (clause: string) => boolean): string
   const end = sentence.match(/[.!?۔؟]$/)?.[0] ?? '';
   const body = end ? sentence.slice(0, -1) : sentence;
   const kept = body
-    .split(/\s*[,،]\s*(?:(?:lekin|magar|but|however|لیکن|مگر)\s+)?|\s+(?:lekin|magar|but|however|لیکن|مگر)\s+/i)
+    // A comma between digits is a thousands separator ("Rs 50,000"), not a clause break.
+    .split(/\s*(?<!\d)[,،](?!\d)\s*(?:(?:lekin|magar|but|however|لیکن|مگر)\s+)?|\s+(?:lekin|magar|but|however|لیکن|مگر)\s+/i)
     .filter((c) => c.trim() && !bad(c));
   if (kept.length === 0) return '';
   const joined = kept.join(', ').trim();
@@ -65,6 +75,34 @@ function inventsDuration(sentence: string, known: string): boolean {
     if (numbers.some((n) => !new RegExp(`(^|\\D)${n}(\\D|$)`).test(known))) return true;
   }
   return false;
+}
+
+function inventsAmount(sentence: string, known: Set<number>): boolean {
+  for (const amount of amountsIn(sentence)) {
+    if (!known.has(amount)) return true;
+  }
+  return false;
+}
+
+/** Every money amount in `text`, as plain rupees (commas, Urdu digits, "hazar"/"k"/"lakh" resolved). */
+export function amountsIn(text: string): Set<number> {
+  const out = new Set<number>();
+  for (const m of text.matchAll(MONEY)) {
+    const digits = m[1] ?? m[3];
+    const unit = (m[2] ?? m[4] ?? '').toLowerCase();
+    if (!digits) continue;
+    const value = Number(toAsciiDigits(digits).replace(/,/g, ''));
+    if (!Number.isFinite(value)) continue;
+    const multiplier = /lakh|لاکھ/.test(unit) ? 100_000 : unit ? 1_000 : 1;
+    out.add(Math.round(value * multiplier));
+  }
+  return out;
+}
+
+function toAsciiDigits(text: string): string {
+  return text
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0));
 }
 
 function mentionsDifferentiator(sentence: string, differentiators: string[]): boolean {

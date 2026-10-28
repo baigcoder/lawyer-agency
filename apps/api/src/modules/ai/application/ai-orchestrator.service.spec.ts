@@ -16,6 +16,10 @@ import type { AgentResult } from '../domain/types';
 import { defaultAiSettings } from '../../firm-profile/application/ai-settings.dto';
 
 function makeService(overrides: {
+  burstSettleMs?: number;
+  maxRepliesPerHour?: number;
+  recentAiReplies?: number;
+  pendingMessages?: Array<{ id: string; createdAt: Date; body: string | null; contentType: string; payload: unknown }>;
   escalation?: ReturnType<EscalationDetectorService['detect']> | null;
   intent?: 'INTAKE' | 'FAQ' | 'CASE_UPDATE' | 'HUMAN_HANDOFF' | 'GREETING' | 'OFF_TOPIC';
   agentResult?: AgentResult;
@@ -63,6 +67,8 @@ function makeService(overrides: {
     },
     message: {
       findFirst: vi.fn(async () => message),
+      findMany: vi.fn(async () => overrides.pendingMessages ?? []),
+      count: vi.fn(async () => overrides.recentAiReplies ?? 0),
       update: vi.fn(async () => message),
       create: vi.fn(async (args: { data: Record<string, unknown> }) => ({ id: 'draft-1', ...args.data })),
     },
@@ -216,6 +222,14 @@ function makeService(overrides: {
       documentRequests as never,
       cases as never,
       { summarize: vi.fn(async () => null) } as never,
+      {
+        get: (key: string) =>
+          key === 'AI_BURST_SETTLE_MS'
+            ? (overrides.burstSettleMs ?? 0)
+            : key === 'AI_MAX_REPLIES_PER_HOUR'
+              ? (overrides.maxRepliesPerHour ?? 30)
+              : 45_000,
+      } as never,
     ),
     send,
     voiceReply,
@@ -230,8 +244,111 @@ function makeService(overrides: {
     appointments,
     documentRequests,
     cases,
+    escalationDetector,
   };
 }
+
+describe('AiOrchestratorService burst batching', () => {
+  const earlier = (id: string, body: string, createdAt: Date) => ({ id, createdAt, body, contentType: 'TEXT', payload: {} });
+
+  it('skips an older message when a newer one in the burst is still unanswered', async () => {
+    const { service, voiceReply, intake } = makeService({
+      burstSettleMs: 4_000,
+      pendingMessages: [
+        earlier('msg-2', 'please help', new Date('2026-08-01T00:00:02Z')),
+        earlier('msg-1', 'I need help', new Date('2026-08-01T00:00:00Z')),
+      ],
+    });
+    await service.process({ tenantId: 't1', conversationId: 'conv-1', messageId: 'msg-1' });
+    expect(voiceReply.sendAiReply).not.toHaveBeenCalled();
+    expect(intake.run).not.toHaveBeenCalled();
+  });
+
+  it('defers the newest message while the client may still be typing', async () => {
+    const now = new Date();
+    const { service, voiceReply } = makeService({
+      burstSettleMs: 4_000,
+      pendingMessages: [earlier('msg-1', 'I need help', now)],
+    });
+    await expect(
+      service.process({ tenantId: 't1', conversationId: 'conv-1', messageId: 'msg-1' }),
+    ).rejects.toMatchObject({ name: 'RetryLaterError' });
+    expect(voiceReply.sendAiReply).not.toHaveBeenCalled();
+  });
+
+  it('answers the whole burst once, so the escalation check sees every message', async () => {
+    const { service, voiceReply, escalationDetector, tx } = makeService({
+      burstSettleMs: 4_000,
+      clientText: 'please help',
+      pendingMessages: [
+        earlier('msg-1', 'please help', new Date('2026-08-01T00:00:02Z')),
+        earlier('msg-0', 'Police ne mere bhai ko arrest kar liya', new Date('2026-08-01T00:00:00Z')),
+      ],
+    });
+    await service.process({ tenantId: 't1', conversationId: 'conv-1', messageId: 'msg-1' });
+    expect(escalationDetector.detect).toHaveBeenCalledWith(
+      expect.objectContaining({ clientText: 'Police ne mere bhai ko arrest kar liya\nplease help' }),
+    );
+    expect(voiceReply.sendAiReply).toHaveBeenCalledTimes(1);
+    const marked = tx.message.update.mock.calls.filter((call) =>
+      JSON.stringify(call).includes('aiTurnCompletedAt'),
+    );
+    expect(marked.map((call) => JSON.stringify(call))).toEqual(
+      expect.arrayContaining([expect.stringContaining('msg-0'), expect.stringContaining('msg-1')]),
+    );
+  });
+});
+
+describe('AiOrchestratorService reply limit', () => {
+  it('stays quiet once a conversation hits the hourly AI reply limit', async () => {
+    const { service, voiceReply, intake } = makeService({ recentAiReplies: 30, maxRepliesPerHour: 30 });
+    await service.process({ tenantId: 't1', conversationId: 'conv-1', messageId: 'msg-1' });
+    expect(intake.run).not.toHaveBeenCalled();
+    expect(voiceReply.sendAiReply).not.toHaveBeenCalled();
+  });
+
+  it('answers normally under the limit', async () => {
+    const { service, voiceReply } = makeService({ recentAiReplies: 29, maxRepliesPerHour: 30 });
+    await service.process({ tenantId: 't1', conversationId: 'conv-1', messageId: 'msg-1' });
+    expect(voiceReply.sendAiReply).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('AiOrchestratorService transaction phases', () => {
+  it('stays silent when a lawyer takes the conversation over while the model is thinking', async () => {
+    const { service, voiceReply, tx, intake } = makeService();
+    const snapshot = await tx.conversation.findUnique();
+    tx.conversation.findUnique
+      .mockResolvedValueOnce(snapshot) // turn load
+      .mockResolvedValueOnce(snapshot) // phase 1 read
+      .mockResolvedValueOnce({ ...snapshot, state: 'HUMAN_ACTIVE' }); // phase 3 fresh read
+    await service.process({ tenantId: 't1', conversationId: 'conv-1', messageId: 'msg-1' });
+    expect(intake.run).toHaveBeenCalled();
+    expect(voiceReply.sendAiReply).not.toHaveBeenCalled();
+  });
+
+  it('runs every model call outside a transaction', async () => {
+    let inTx = false;
+    const { service, intake } = makeService();
+    const realWithTenant = (service as unknown as { uow: { withTenant: (t: string, fn: (tx: unknown) => Promise<unknown>) => Promise<unknown> } }).uow;
+    const original = realWithTenant.withTenant;
+    realWithTenant.withTenant = async (t, fn) => {
+      inTx = true;
+      try {
+        return await original(t, fn);
+      } finally {
+        inTx = false;
+      }
+    };
+    const seen: boolean[] = [];
+    intake.run = vi.fn(async () => {
+      seen.push(inTx);
+      return { responseText: 'Thanks.', languageDetected: 'EN', citations: [] };
+    }) as never;
+    await service.process({ tenantId: 't1', conversationId: 'conv-1', messageId: 'msg-1' });
+    expect(seen).toEqual([false]);
+  });
+});
 
 describe('AiOrchestratorService', () => {
   it('runs intake agent and sends a reply', async () => {

@@ -5,6 +5,8 @@
 export function buildDynamicReplyRules(params: {
   isFirstClientTurn: boolean;
   aiGreetingHint: string;
+  /** The reply is sent as a voice note, so it must read as natural speech. */
+  replyWillBeSpoken?: boolean | undefined;
 }): string {
   const hint = params.aiGreetingHint.trim();
   const hintLine = hint
@@ -19,6 +21,12 @@ export function buildDynamicReplyRules(params: {
     '- Do NOT assume a practice area (e.g. family law) unless the client mentioned it.',
     '- Do NOT paste a pre-written introduction or list every service unprompted.',
     '- Acknowledge what they just said in the first sentence before asking anything.',
+    '- The client may send several short messages in a row; they arrive here as separate lines. Answer them together, as one natural reply that covers every point — never reply line by line.',
+    '- Return their greeting the way a person would: "Assalam o alaikum" / "AoA" → "Wa alaikum assalam"; "hi" → a simple hello. Only greet once per thread.',
+    '- If they sound worried, upset, scared or in a hurry, first acknowledge it in a few warm words (e.g. "Fikr na karein, hum dekh rahe hain" / "Main samajh sakta hoon"), then help. Never sound cheerful about bad news.',
+    '- If you know their name (Known intake fields), use it now and then with sahab / sahiba — not in every message.',
+    '- Do not open the same way as your last reply in Prior conversation; vary your wording like a person would.',
+    '- If your reply covers two separate points, put a blank line between them — each part is sent as its own WhatsApp message.',
     '- Ask at most ONE question. Never repeat a question already answered in Prior conversation or Known intake fields.',
     '- If they wrote Roman Urdu (kya, mujhe, madad), reply in Roman Urdu — not English and not Nastaliq unless they used it.',
     '- If they spoke or wrote Urdu script, reply in Urdu script — never answer spoken Urdu with English.',
@@ -35,6 +43,9 @@ export function buildDynamicReplyRules(params: {
     '- Complaint about the firm (no reply, unanswered calls, fees, delay): apologise sincerely in one line, say a senior person is being told right now, and set needsLawyer=true. Do not ask them anything.',
     '- Pakistani Urdu only: meharbani, baraye meharbani, shukriya, nikah nama, shanakhti card. Never Hindi words like kripya, dhanyavaad, samasya, vivah.',
     '- Write Roman Urdu the way Pakistanis text it, mostly Urdu words; keep English only for terms people really use (FIR, bail, CNIC, case, court).',
+    params.replyWillBeSpoken
+      ? '- This reply will be SPOKEN as a voice note: write it exactly as you would say it out loud — short sentences, natural pauses with commas, no lists, no brackets, no abbreviations a listener would not hear (say "F I R" only if that is how it is said).'
+      : '- This reply is read as text: plain short sentences; a short list only if they asked for several items.',
     params.isFirstClientTurn
       ? '- First reply in this thread: a short assistant line is added automatically. Do NOT write that you are an AI/assistant again. Address their message only.'
       : '- Continuing thread: skip re-introduction; do not repeat questions already answered.',

@@ -6,7 +6,7 @@ import type { SendService } from '../../whatsapp/application/send.service';
 import type { UsersService } from '../../users/application/users.service';
 import type { OutboxWriter } from '../../../common/events/outbox-writer';
 import type { MediaReadService } from '../../whatsapp/application/media-read.service';
-import { InboxService, playbackMimeType } from './inbox.service';
+import { InboxService, playbackMimeType, editRatio } from './inbox.service';
 
 function makeConversation(overrides: Partial<Conversation> = {}): Conversation {
   return {
@@ -219,6 +219,39 @@ describe('InboxService', () => {
     );
   });
 
+  it('sends an edited AI draft and keeps the original beside it', async () => {
+    const rows = [makeConversation({ id: 'conv-1' })];
+    const { uow, tx } = mockUow(rows);
+    const draft = { id: 'draft-1', createdAt: new Date(), body: 'Fee 5000 hai.', payload: { pendingApproval: true } };
+    (tx.message.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(draft);
+    const update = vi.fn(async () => draft);
+    (tx.message as unknown as { update: typeof update }).update = update;
+    const send = { send: vi.fn(async () => ({ wamid: 'w' })) } as unknown as SendService;
+    const service = makeInboxService(uow, send);
+
+    await service.approveDraft('t1', 'conv-1', 'draft-1', 'user-1', 'Consultation fee PKR 5,000 hai, sahab.');
+
+    expect(send.send).toHaveBeenCalledWith('t1', expect.objectContaining({ body: 'Consultation fee PKR 5,000 hai, sahab.' }));
+    const data = (update.mock.calls[0] as unknown as [{ data: { body?: string; payload: Record<string, unknown> } }])[0].data;
+    expect(data.body).toBe('Consultation fee PKR 5,000 hai, sahab.');
+    expect(data.payload).toMatchObject({ lawyerEdited: true, aiOriginalBody: 'Fee 5000 hai.', editedBy: 'user-1', pendingApproval: false });
+  });
+
+  it('approves an unchanged draft as written', async () => {
+    const rows = [makeConversation({ id: 'conv-1' })];
+    const { uow, tx } = mockUow(rows);
+    const draft = { id: 'draft-1', createdAt: new Date(), body: 'Fee 5000 hai.', payload: {} };
+    (tx.message.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(draft);
+    const update = vi.fn(async () => draft);
+    (tx.message as unknown as { update: typeof update }).update = update;
+    const send = { send: vi.fn(async () => ({ wamid: 'w' })) } as unknown as SendService;
+    await makeInboxService(uow, send).approveDraft('t1', 'conv-1', 'draft-1', 'user-1', '  Fee 5000 hai.  ');
+    expect(send.send).toHaveBeenCalledWith('t1', expect.objectContaining({ body: 'Fee 5000 hai.' }));
+    const data = (update.mock.calls[0] as unknown as [{ data: { body?: string; payload: Record<string, unknown> } }])[0].data;
+    expect(data.body).toBeUndefined();
+    expect(data.payload).toMatchObject({ approvedUnchanged: true });
+  });
+
   it('sends a manual reply', async () => {
     const rows = [makeConversation({ id: 'conv-1' })];
     const { uow } = mockUow(rows);
@@ -280,5 +313,13 @@ describe('playbackMimeType', () => {
     expect(playbackMimeType('application/octet-stream', 'tenants/t1/media/a.ogg')).toBe(
       'audio/ogg; codecs=opus',
     );
+  });
+});
+
+describe('editRatio', () => {
+  it('is 0 for identical text and grows with the rewrite', () => {
+    expect(editRatio('fee 5000 hai', 'fee 5000 hai')).toBe(0);
+    expect(editRatio('fee 5000 hai', 'fee 6000 hai')).toBeCloseTo(1 / 3);
+    expect(editRatio('a b c', 'x y z')).toBe(1);
   });
 });

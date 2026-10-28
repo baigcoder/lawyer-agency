@@ -506,7 +506,19 @@ export class InboxService {
     });
   }
 
-  async approveDraft(tenantId: string, conversationId: string, messageId: string, editorUserId: string): Promise<void> {
+  /**
+   * Sends an AI draft, as written or as the lawyer edited it. When edited, the
+   * draft row keeps the AI's original next to what was actually sent, so how
+   * lawyers correct the AI can be reviewed and fed back into prompts and the
+   * knowledge library (it used to be a reject + separate reply, losing the pair).
+   */
+  async approveDraft(
+    tenantId: string,
+    conversationId: string,
+    messageId: string,
+    editorUserId: string,
+    editedBody?: string | undefined,
+  ): Promise<void> {
     const ctx = await this.uow.withTenant(tenantId, async (tx) => {
       const conversation = await tx.conversation.findFirst({
         where: { id: conversationId },
@@ -523,12 +535,16 @@ export class InboxService {
       };
     });
 
+    const edited = editedBody?.trim();
+    const wasEdited = Boolean(edited && edited !== ctx.body.trim());
+    const finalBody = wasEdited && edited ? edited : ctx.body;
+
     await this.send.send(tenantId, {
       kind: 'text',
       conversationId,
       toWaPhone: ctx.clientWaPhone,
       senderType: 'STAFF',
-      body: ctx.body,
+      body: finalBody,
     });
 
     await this.uow.withTenant(tenantId, async (tx) => {
@@ -539,7 +555,12 @@ export class InboxService {
         data: {
           deliveryStatus: 'SENT',
           senderUserId: editorUserId,
-          payload: toInputJson({ ...asPayloadRecord(draft.payload), pendingApproval: false }),
+          ...(wasEdited ? { body: finalBody } : {}),
+          payload: toInputJson({
+            ...asPayloadRecord(draft.payload),
+            pendingApproval: false,
+            ...(wasEdited ? draftEditRecord(ctx.body, finalBody, editorUserId) : { approvedUnchanged: true }),
+          }),
         },
       });
     });
@@ -638,4 +659,33 @@ async function loadPendingPaymentsByClient(
     map.set(row.clientId, mapPendingPayment(row));
   }
   return map;
+}
+
+/** What a lawyer changed in an AI draft — kept on the message for review. */
+export function draftEditRecord(original: string, sent: string, editorUserId: string): Record<string, unknown> {
+  return {
+    lawyerEdited: true,
+    aiOriginalBody: original,
+    editedBy: editorUserId,
+    editedAt: new Date().toISOString(),
+    editRatio: Number(editRatio(original, sent).toFixed(3)),
+  };
+}
+
+/** 0 = identical, 1 = completely rewritten (word-level), for spotting heavy rewrites. */
+export function editRatio(a: string, b: string): number {
+  const x = a.toLowerCase().split(/\s+/).filter(Boolean);
+  const y = b.toLowerCase().split(/\s+/).filter(Boolean);
+  if (x.length === 0 && y.length === 0) return 0;
+  const prev = Array.from({ length: y.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= x.length; i++) {
+    let diag = prev[0] ?? 0;
+    prev[0] = i;
+    for (let j = 1; j <= y.length; j++) {
+      const above = prev[j] ?? 0;
+      prev[j] = Math.min(above + 1, (prev[j - 1] ?? 0) + 1, diag + (x[i - 1] === y[j - 1] ? 0 : 1));
+      diag = above;
+    }
+  }
+  return (prev[y.length] ?? 0) / Math.max(x.length, y.length);
 }

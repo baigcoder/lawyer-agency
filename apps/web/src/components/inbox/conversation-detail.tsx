@@ -293,8 +293,11 @@ export function ConversationDetail({ detail, onBack }: ConversationDetailProps) 
   });
 
   const approveDraftMutation = useMutation({
-    mutationFn: (messageId: string) =>
-      apiRequest(`/v1/inbox/${conversation.id}/drafts/${messageId}/approve`, { method: 'POST' }),
+    mutationFn: ({ messageId, body }: { messageId: string; body?: string }) =>
+      apiRequest(`/v1/inbox/${conversation.id}/drafts/${messageId}/approve`, {
+        method: 'POST',
+        ...(body ? { body: { body } } : {}),
+      }),
     onSuccess: () => {
       toast.success(t('demoToastSent'));
       void queryClient.invalidateQueries({ queryKey: ['inbox', conversation.id] });
@@ -350,20 +353,17 @@ export function ConversationDetail({ detail, onBack }: ConversationDetailProps) 
   const draftEdited = Boolean(draft && draftEditBody.trim() && draftEditBody.trim() !== draft.body.trim());
   const draftBusy = approveDraftMutation.isPending || rejectDraftMutation.isPending || replyMutation.isPending;
 
-  // The approve endpoint sends the draft exactly as the AI wrote it. If the
-  // lawyer edited it, the AI draft is withdrawn and their text goes out as a
-  // normal lawyer reply — otherwise their edits would be silently dropped.
+  // Edited drafts go through the same approve call with the lawyer's text, so
+  // the server sends their version and keeps the AI original beside it.
   const approveDraft = async () => {
     if (!draft) return;
     if (!draftEdited) {
-      approveDraftMutation.mutate(draft.messageId);
+      approveDraftMutation.mutate({ messageId: draft.messageId });
       return;
     }
     try {
-      await rejectDraftMutation.mutateAsync(draft.messageId);
-      await replyMutation.mutateAsync(draftEditBody.trim());
+      await approveDraftMutation.mutateAsync({ messageId: draft.messageId, body: draftEditBody.trim() });
       setEditingDraft(false);
-      toast.success(t('demoToastSent'));
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : t('tlSendFailed'));
     }

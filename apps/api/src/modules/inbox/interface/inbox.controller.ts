@@ -37,6 +37,13 @@ const stateBodySchema = z.object({
   state: stateSchema,
 });
 
+/** Optional edited text: the lawyer's version replaces the AI draft and both are kept. */
+const approveDraftBodySchema = z
+  .object({ body: z.string().trim().min(1).max(4096).optional() })
+  .optional()
+  .transform((value) => value ?? {});
+type ApproveDraftBody = z.infer<typeof approveDraftBodySchema>;
+
 const replyBodySchema = z.object({
   body: z.string().min(1).max(4000),
 });
@@ -185,8 +192,9 @@ export class InboxController {
     @CurrentUser() user: RequestPrincipal,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('messageId', ParseUUIDPipe) messageId: string,
+    @Body(new ZodValidationPipe(approveDraftBodySchema)) body: ApproveDraftBody,
   ) {
-    return this.inbox.approveDraft(tenantId, id, messageId, user.userId ?? '');
+    return this.inbox.approveDraft(tenantId, id, messageId, user.userId ?? '', body.body);
   }
 
   @Post(':id/drafts/:messageId/reject')
