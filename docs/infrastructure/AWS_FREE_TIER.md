@@ -57,8 +57,10 @@ EC2 console (region ap-south-1) → **Launch instance**:
 | Storage | 30 GiB gp3 |
 | Security group | SSH 22 from **My IP**; HTTP 80 and HTTPS 443 from anywhere |
 
-Only if you enable live calls (voice profile): also UDP 5060 and UDP
-40000–40031 from anywhere.
+Only if you enable live calls (voice profile): also **TCP and UDP 5060**
+and UDP 40000–40031 from anywhere. Wavoip sends call INVITEs over TCP;
+with only UDP open every call falls back to the missed-call WhatsApp reply.
+Set `WAVOIP_SIP_CONTACT_HOST` to the Elastic IP.
 
 Then **Elastic IPs → Allocate → Associate** with the instance, so the IP
 survives stop/start.
