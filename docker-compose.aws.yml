@@ -147,8 +147,8 @@ services:
       <<: *app-env
       API_ROLE: worker
 
-  # WhatsApp receptionist (live calls, D-124). Opt-in: needs UDP ports open
-  # in the security group and costs ~200 MB RAM.
+  # WhatsApp receptionist (live calls, D-124). Opt-in: needs SIP 5060 (TCP+UDP)
+  # and RTP UDP ports open in the security group; costs ~200 MB RAM.
   voice:
     <<: *app
     profiles: ["voice"]
@@ -158,6 +158,8 @@ services:
       WEBRTC_ICE_PORT_MIN: 40000
       WEBRTC_ICE_PORT_MAX: 40031
     ports:
+      # The SIP UA registers Contact ;transport=tcp, so Wavoip's INVITEs arrive on TCP.
+      - "5060:5060/tcp"
       - "5060:5060/udp"
       - "40000-40031:40000-40031/udp"
 
