@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils';
 import { FirmProfileForm } from '@/components/firm-profile-form';
 import { AiSettingsCard } from '@/components/ai-settings-card';
 import { OwnerProfileCard } from '@/components/owner-profile-card';
+import { QuickRepliesCard } from '@/components/quick-replies-card';
 
 const prefsSchema = z.object({
   DASHBOARD: z.boolean(),
@@ -47,6 +48,7 @@ const SECTIONS = [
   { key: 'owner', icon: User },
   { key: 'payments', icon: CreditCard },
   { key: 'ai', icon: Zap },
+  { key: 'quick-replies', icon: MessageCircle },
   { key: 'notifications', icon: Bell },
 ] as const;
 
@@ -58,6 +60,7 @@ const SECTION_ACCESS: Record<SectionKey, { anyOf?: string[]; always?: boolean }>
   owner: { anyOf: ['users:manage', 'lawyers:write'] },
   payments: { anyOf: ['users:manage'] },
   ai: { anyOf: ['users:manage'] },
+  'quick-replies': { anyOf: ['quick-replies:manage'] },
   notifications: { anyOf: ['notifications:write'] },
 };
 
@@ -107,6 +110,7 @@ export default function SettingsPage() {
     owner: 'Owner profile',
     payments: t('paymentReceivingDetails'),
     ai: t('settingsSectionAi'),
+    'quick-replies': t('quickReplies'),
     notifications: t('settingsSectionNotifications'),
   };
 
@@ -196,6 +200,13 @@ export default function SettingsPage() {
           <section id="ai" className="scroll-mt-6 space-y-4">
             <SectionHeading title={t('settingsSectionAi')} />
             <AiSettingsCard />
+          </section>
+          ) : null}
+
+          {visibleKeys.includes('quick-replies') ? (
+          <section id="quick-replies" className="scroll-mt-6 space-y-4">
+            <SectionHeading title={t('quickReplies')} />
+            <QuickRepliesCard />
           </section>
           ) : null}
 
