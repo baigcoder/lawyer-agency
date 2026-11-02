@@ -61,7 +61,7 @@ export function createNotificationHandlers(
               type: 'case.created',
               title: 'New case opened',
               body: `Case ${reference} (${matterType}) was opened.`,
-              url: `/dashboard/cases/${caseId}`,
+              url: '/dashboard/cases',
               payload: { caseId, clientId, reference, matterType },
             }),
           ),
@@ -85,7 +85,7 @@ export function createNotificationHandlers(
               type: 'escalation.opened',
               title: 'Escalation: human required',
               body: `A conversation was escalated: ${triggerType}.`,
-              url: `/dashboard/inbox/${conversationId}`,
+              url: `/dashboard/inbox?conversation=${conversationId}`,
               payload: { conversationId, escalationId, triggerType },
             }),
           ),
@@ -111,7 +111,7 @@ export function createNotificationHandlers(
               body: practiceArea
                 ? `A client completed intake for ${practiceArea}.`
                 : 'A client completed intake.',
-              url: `/dashboard/inbox/${conversationId}`,
+              url: `/dashboard/inbox?conversation=${conversationId}`,
               payload: { conversationId, intakeSessionId, practiceArea },
             }),
           ),

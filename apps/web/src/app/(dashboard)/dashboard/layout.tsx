@@ -13,6 +13,7 @@ import { InboxAlertWatcher } from '@/components/inbox/inbox-alert-watcher';
 import { InboxUnreadBadge } from '@/components/inbox/inbox-unread-badge';
 import { EscalationBadge } from '@/components/escalations/escalation-badge';
 import { HeaderWhatsappStatus } from '@/components/header-whatsapp-status';
+import { NotificationBell } from '@/components/notification-bell';
 import { LanguageToggle } from '@/components/language-toggle';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { UserMenu } from '@/components/user-menu';
@@ -103,6 +104,7 @@ function Shell({ children }: { children: React.ReactNode }) {
             </nav>
             <div className="ms-auto flex items-center gap-1.5">
               <HeaderWhatsappStatus />
+              <NotificationBell />
               <span className="lg:hidden">
                 <LanguageToggle />
               </span>
