@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 import { ApprovalGate } from '@/components/approval-gate';
 import { HandoffBriefView } from '@/components/escalations/handoff-brief-view';
 import { TimelineMessage } from '@/components/inbox/timeline-message';
+import { QuickReplyButton, useQuickReplyComposer } from '@/components/inbox/quick-reply-picker';
 import { VoiceNote } from '@/components/inbox/voice-note';
 import { formatWaClock, formatWaDayLabel, waInitials } from '@/components/inbox/wa-format';
 import { Docket, Signal, type SignalLevel } from '@/components/signal';
@@ -39,7 +40,7 @@ import { SlaClock } from '@/components/workspace/sla-clock';
 import { apiRequest, ApiError } from '@/lib/api-client';
 import { useLanguage } from '@/lib/language';
 import { escalationListSchema, type EscalationSummary } from '@/lib/schemas/escalations';
-import { practiceAreaOptions } from '@/lib/schemas/firm-profile';
+import { firmProfileReadSchema, practiceAreaOptions } from '@/lib/schemas/firm-profile';
 import type { ConversationState, InboxDetail, InboxMessage } from '@/lib/schemas/inbox';
 import { userListSchema } from '@/lib/schemas/users';
 import { useSession } from '@/lib/session';
@@ -167,13 +168,30 @@ function dayOf(d: Date) {
 
 export function ConversationDetail({ detail, onBack }: ConversationDetailProps) {
   const { t } = useLanguage();
-  const { can } = useSession();
+  const { can, session } = useSession();
   const canWriteInbox = can('inbox:write');
   const canWriteCases = can('cases:write');
   const router = useRouter();
   const { conversation, messages } = detail;
 
   const [reply, setReply] = useState('');
+  const replyRef = useRef<HTMLTextAreaElement | null>(null);
+  const firm = useQuery({
+    queryKey: ['firm-profile'],
+    queryFn: () => apiRequest('/v1/firm-profile', { schema: firmProfileReadSchema }),
+    retry: false,
+  });
+  const quick = useQuickReplyComposer({
+    reply,
+    setReply,
+    textareaRef: replyRef,
+    values: {
+      client_name: conversation.client.name,
+      firm_name: firm.data?.displayName ?? firm.data?.firmName,
+      case_ref: conversation.case?.reference,
+      lawyer_name: session?.name,
+    },
+  });
   const [composerMode, setComposerMode] = useState<'REPLY' | 'NOTE'>('REPLY');
   const [contextOpen, setContextOpen] = useState(true);
   const [contextSheet, setContextSheet] = useState(false);
@@ -650,17 +668,26 @@ export function ConversationDetail({ detail, onBack }: ConversationDetailProps) 
             </span>
           </div>
           {composerMode === 'REPLY' ? (
+            <>
+            {quick.panel}
             <div className="flex items-end gap-2">
+              <QuickReplyButton
+                open={quick.open}
+                onClick={quick.toggle}
+                disabled={!windowOpen || !canWriteInbox || replyMutation.isPending}
+              />
               <Textarea
+                ref={replyRef}
                 value={reply}
-                onChange={(e) => setReply(e.target.value)}
-                placeholder={windowOpen ? t('inboxReplyPlaceholder') : t('inboxReplyClosed')}
+                onChange={(e) => quick.onChange(e.target.value)}
+                placeholder={windowOpen ? t('inboxReplyPlaceholderQuick') : t('inboxReplyClosed')}
                 aria-label={t('tlReply')}
                 disabled={!windowOpen || !canWriteInbox || replyMutation.isPending}
                 rows={2}
                 dir="auto"
                 className="max-h-36 min-h-11 flex-1 resize-none text-[13.5px]"
                 onKeyDown={(e) => {
+                  if (quick.onKeyDown(e)) return;
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     if (reply.trim() && windowOpen) replyMutation.mutate(reply.trim());
@@ -677,6 +704,7 @@ export function ConversationDetail({ detail, onBack }: ConversationDetailProps) 
                 <Send className="rtl:-scale-x-100" aria-hidden />
               </Button>
             </div>
+            </>
           ) : (
             <div className="flex items-end gap-2">
               <Textarea

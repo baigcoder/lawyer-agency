@@ -438,6 +438,7 @@ model Tenant {
   firmPaymentDetails FirmPaymentDetails?
   courtHearings      CourtHearing[]
   conversationNotes  ConversationNote[]
+  quickReplies       QuickReply[]
   voiceCalls         VoiceCall[]
 
   @@map("tenants")
@@ -1159,6 +1160,24 @@ model ConversationNote {
 
   @@index([tenantId, conversationId])
   @@map("conversation_notes")
+  @@schema("app")
+}
+
+/// Firm-wide saved replies a lawyer inserts into the inbox composer. Plain text
+/// with {placeholders}; sent as a normal message (QR numbers have no 24h window).
+model QuickReply {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @db.Uuid
+  title     String
+  body      String
+  language  String // 'en' | 'ur' (CHECK in migration 0031)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, title, language])
+  @@map("quick_replies")
   @@schema("app")
 }
 

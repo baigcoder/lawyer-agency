@@ -68,8 +68,8 @@ export class NotificationsController {
     return this.notifications.unreadCount(tenantId, user.userId ?? '');
   }
 
+  // Marking your own notification read needs only the class-level read permission.
   @Post(':id/read')
-  @RequirePermission('notifications:write')
   markRead(
     @TenantId() tenantId: string,
     @CurrentUser() user: RequestPrincipal,

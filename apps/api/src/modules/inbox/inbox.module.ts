@@ -7,6 +7,8 @@ import { WhatsappPortsModule } from '../whatsapp/whatsapp-ports.module';
 import { AuditModule } from '../audit/audit.module';
 import { InboxService } from './application/inbox.service';
 import { InboxController } from './interface/inbox.controller';
+import { QuickRepliesService } from './application/quick-replies.service';
+import { QuickRepliesController } from './interface/quick-replies.controller';
 
 /**
  * Inbox dashboard module (Phase 11, D-018).
@@ -19,8 +21,8 @@ export class InboxModule {
     return {
       module: InboxModule,
       imports: [MessagesModule, UsersModule, CasesModule.register(role), WhatsappModule.register(role), WhatsappPortsModule, AuditModule],
-      controllers: [InboxController],
-      providers: [InboxService],
+      controllers: [InboxController, QuickRepliesController],
+      providers: [InboxService, QuickRepliesService],
       exports: [InboxService],
     };
   }

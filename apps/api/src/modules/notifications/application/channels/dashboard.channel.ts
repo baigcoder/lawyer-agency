@@ -20,7 +20,13 @@ export class DashboardChannel implements NotificationChannel {
           tenantId: notification.tenantId,
           userId: notification.userId,
           type: notification.type,
-          payload: toInputJson(notification.payload),
+          // The bell renders title/body and links to url; payload alone is only ids.
+          payload: toInputJson({
+            ...notification.payload,
+            title: notification.title,
+            body: notification.body,
+            url: notification.url,
+          }),
           channel: 'DASHBOARD',
         },
       });

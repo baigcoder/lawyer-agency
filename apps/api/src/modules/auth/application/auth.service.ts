@@ -42,6 +42,7 @@ const SYSTEM_ROLES: Array<{ name: string; permissions: string[] }> = [
       'knowledge-base:read',
       'notifications:read',
       'notifications:write',
+      'quick-replies:manage',
     ],
   },
   {
